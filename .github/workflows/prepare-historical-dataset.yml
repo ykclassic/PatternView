@@ -1,0 +1,38 @@
+name: Prepare historical evaluation dataset
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "scripts/prepare-historical-dataset.ts"
+      - "datasets/historical-v1/manifest.json"
+      - ".github/workflows/prepare-historical-dataset.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: historical-dataset-preparation-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    name: Fetch and validate blind historical packets
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Prepare raw snapshots and blind packets
+        run: node --experimental-strip-types scripts/prepare-historical-dataset.ts
+      - name: Upload immutable run artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: patternview-historical-v1-${{ github.run_id }}
+          path: datasets/historical-v1/
+          if-no-files-found: error
+          retention-days: 30
