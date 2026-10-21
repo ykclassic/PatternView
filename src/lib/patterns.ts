@@ -277,7 +277,95 @@ function detectAdvancedPattern(candles: Candle[]): DetectedPattern | null {
   return candidates[0]?.pattern ?? null;
 }
 
+
+function detectCandlestickPattern(candles: Candle[]): DetectedPattern | null {
+  if (candles.length < 3) return null;
+  const recent = candles.slice(-3);
+  if (recent.some((c) =>
+    ![c.time, c.open, c.high, c.low, c.close, c.volume].every(Number.isFinite) ||
+    c.open <= 0 || c.low <= 0 || c.volume < 0 ||
+    c.high < Math.max(c.open, c.close, c.low) ||
+    c.low > Math.min(c.open, c.close)
+  )) return null;
+
+  const candle = recent[2];
+  const body = Math.abs(candle.close - candle.open);
+  const range = candle.high - candle.low;
+  if (range <= 0) return null;
+  const upper = candle.high - Math.max(candle.open, candle.close);
+  const lower = Math.min(candle.open, candle.close) - candle.low;
+  const bullish = (c: Candle) => c.close > c.open;
+  const bearish = (c: Candle) => c.close < c.open;
+  const prior = recent[1];
+  const first = recent[0];
+  let kind: DetectedPattern["kind"] | null = null;
+  let explanation = "";
+
+  if (body / range <= 0.1) {
+    kind = "DOJI";
+    explanation = "The latest candle has a small real body relative to its full range; a doji indicates indecision, not a direction by itself.";
+  } else if (lower >= body * 2 && upper <= body * 0.5 && body / range <= 0.4) {
+    kind = "HAMMER";
+    explanation = "The latest candle has a long lower shadow and a small body. Context and subsequent confirmation are required; location alone does not prove a reversal.";
+  } else if (upper >= body * 2 && lower <= body * 0.5 && body / range <= 0.4) {
+    kind = "SHOOTING_STAR";
+    explanation = "The latest candle has a long upper shadow and a small body. Context and subsequent confirmation are required; location alone does not prove a reversal.";
+  } else if (bullish(candle) && bearish(prior) &&
+    candle.open <= prior.close && candle.close >= prior.open &&
+    candle.close - candle.open > 0) {
+    kind = "BULLISH_ENGULFING";
+    explanation = "The latest bullish real body engulfs the prior bearish real body.";
+  } else if (bearish(candle) && bullish(prior) &&
+    candle.open >= prior.close && candle.close <= prior.open) {
+    kind = "BEARISH_ENGULFING";
+    explanation = "The latest bearish real body engulfs the prior bullish real body.";
+  } else {
+    const firstBody = Math.abs(first.close - first.open);
+    const priorBody = Math.abs(prior.close - prior.open);
+    const midpoint = (first.open + first.close) / 2;
+    if (bearish(first) && firstBody / Math.max(first.high - first.low, Number.EPSILON) >= 0.5 &&
+      priorBody / Math.max(prior.high - prior.low, Number.EPSILON) <= 0.3 &&
+      bullish(candle) && candle.close > midpoint) {
+      kind = "MORNING_STAR";
+      explanation = "Three-candle heuristic: strong bearish candle, small middle body, then a bullish close above the first candle's midpoint.";
+    } else if (bullish(first) && firstBody / Math.max(first.high - first.low, Number.EPSILON) >= 0.5 &&
+      priorBody / Math.max(prior.high - prior.low, Number.EPSILON) <= 0.3 &&
+      bearish(candle) && candle.close < midpoint) {
+      kind = "EVENING_STAR";
+      explanation = "Three-candle heuristic: strong bullish candle, small middle body, then a bearish close below the first candle's midpoint.";
+    } else if (recent.every(bullish) &&
+      recent[1].close > recent[0].close && recent[2].close > recent[1].close &&
+      recent.every((c) => Math.abs(c.close - c.open) / Math.max(c.high - c.low, Number.EPSILON) >= 0.5)) {
+      kind = "THREE_WHITE_SOLDIERS";
+      explanation = "Three consecutive bullish candles with substantial bodies and rising closes.";
+    } else if (recent.every(bearish) &&
+      recent[1].close < recent[0].close && recent[2].close < recent[1].close &&
+      recent.every((c) => Math.abs(c.close - c.open) / Math.max(c.high - c.low, Number.EPSILON) >= 0.5)) {
+      kind = "THREE_BLACK_CROWS";
+      explanation = "Three consecutive bearish candles with substantial bodies and falling closes.";
+    }
+  }
+
+  if (!kind) return null;
+  const bearishKind = ["SHOOTING_STAR", "BEARISH_ENGULFING", "EVENING_STAR", "THREE_BLACK_CROWS"].includes(kind);
+  return {
+    kind,
+    status: "CONFIRMED",
+    firstPivotTime: recent[kind === "MORNING_STAR" || kind === "EVENING_STAR" || kind === "THREE_WHITE_SOLDIERS" || kind === "THREE_BLACK_CROWS" ? 0 : 2].time,
+    secondPivotTime: candle.time,
+    neckline: candle.close,
+    invalidation: bearishKind ? candle.high : candle.low,
+    breakoutLevel: candle.close,
+    entry: null,
+    stopLoss: null,
+    takeProfit: null,
+    explanation: [explanation, "Candlestick formations are descriptive heuristics; trend context and later candles may confirm or negate them.", "No trade entry, stop or target is inferred from a candlestick label."],
+  };
+}
+
 export function detectLatestPattern(candles: Candle[]): DetectedPattern | null {
+  const candlestick = detectCandlestickPattern(candles);
+  if (candlestick) return candlestick;
   const double = detectDoublePattern(candles);
   const advanced = detectAdvancedPattern(candles);
   if (!double) return advanced;
