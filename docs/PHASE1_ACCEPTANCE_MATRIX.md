@@ -4,7 +4,7 @@ This file is the evidence register for PatternView Phase 1. Update statuses only
 
 | ID | Acceptance test | Evidence required | Status at baseline |
 |---|---|---|---|
-| REQ-01 | PRD, market contract, catalogue and non-goals are versioned | PRD reviewed in repository | PASS after PRD merge |
+| REQ-01 | PRD, market contract, catalogue and non-goals are versioned | PRD reviewed in repository | IN REVIEW — PRD added on the acceptance branch |
 | DATA-01 | BTC/USDT × 15m | Live HTTP result, provider header, candle validation | NOT RUN |
 | DATA-02 | BTC/USDT × 1h | Live HTTP result, provider header, candle validation | PARTIAL: prior smoke test returned Kraken candles |
 | DATA-03 | BTC/USDT × 4h | Live HTTP result, provider header, candle validation | NOT RUN |
