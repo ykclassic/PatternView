@@ -97,7 +97,7 @@ export function evaluateLabeledObservations(
         typeof item.timeframe !== "string" || !VALID_TIMEFRAMES.has(item.timeframe as Timeframe)) {
       throw new Error(`Invalid pair or timeframe for observation ${item.id}`);
     }
-    if (!Number.isSafeInteger(item.candleEndTime) || (item.candleEndTime ?? 0) <= 0) {
+    if (typeof item.candleEndTime !== "number" || !Number.isSafeInteger(item.candleEndTime) || item.candleEndTime <= 0) {
       throw new Error(`Invalid candleEndTime for observation ${item.id}`);
     }
     if (item.split !== options.split || !VALID_SPLITS.has(item.split as EvaluationSplit)) {
