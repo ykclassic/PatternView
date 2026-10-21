@@ -21,6 +21,8 @@ jobs:
           cache: npm
       - name: Install dependencies
         run: npm install
+      - name: Unit tests
+        run: npm test
       - name: Type-check
         run: npm run typecheck
       - name: Lint
