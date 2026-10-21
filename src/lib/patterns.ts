@@ -301,15 +301,16 @@ function detectCandlestickPattern(candles: Candle[]): DetectedPattern | null {
   let kind: DetectedPattern["kind"] | null = null;
   let explanation = "";
 
-  if (body / range <= 0.1) {
-    kind = "DOJI";
-    explanation = "The latest candle has a small real body relative to its full range; a doji indicates indecision, not a direction by itself.";
-  } else if (lower >= body * 2 && upper <= body * 0.5 && body / range <= 0.4) {
+  if (lower >= body * 2 && upper <= body * 0.5 && body / range <= 0.4) {
     kind = "HAMMER";
     explanation = "The latest candle has a long lower shadow and a small body. Context and subsequent confirmation are required; location alone does not prove a reversal.";
   } else if (upper >= body * 2 && lower <= body * 0.5 && body / range <= 0.4) {
     kind = "SHOOTING_STAR";
     explanation = "The latest candle has a long upper shadow and a small body. Context and subsequent confirmation are required; location alone does not prove a reversal.";
+  } else if (body / range <= 0.1 &&
+    recent.slice(0, 2).some((c) => Math.abs(c.close - c.open) / Math.max(c.high - c.low, Number.EPSILON) > 0.1)) {
+    kind = "DOJI";
+    explanation = "The latest candle has a small real body relative to its full range after candles with directional bodies; a doji indicates indecision, not a direction by itself.";
   } else if (bullish(candle) && bearish(prior) &&
     candle.open <= prior.close && candle.close >= prior.open &&
     candle.close - candle.open > 0) {
@@ -364,6 +365,15 @@ function detectCandlestickPattern(candles: Candle[]): DetectedPattern | null {
 }
 
 export function detectLatestPattern(candles: Candle[]): DetectedPattern | null {
+  // Reject the whole series if any OHLC row is malformed. Validating only the
+  // latest candles could otherwise let a malformed historical row pass through.
+  if (candles.some((c) =>
+    ![c.time, c.open, c.high, c.low, c.close, c.volume].every(Number.isFinite) ||
+    c.open <= 0 || c.low <= 0 || c.volume < 0 ||
+    c.high < Math.max(c.open, c.close, c.low) ||
+    c.low > Math.min(c.open, c.close)
+  )) return null;
+
   // Prefer multi-swing chart structures when one is present. Otherwise the
   // latest small-body candle in many synthetic fixtures and real markets can
   // mask a higher-level formation as a doji.
