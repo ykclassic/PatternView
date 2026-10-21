@@ -20,8 +20,17 @@ const PATTERN_NAMES: Record<PatternKind, string> = {
   TRIPLE_BOTTOM: "Triple bottom",
   HEAD_AND_SHOULDERS: "Head and shoulders",
   INVERSE_HEAD_AND_SHOULDERS: "Inverse head and shoulders",
+  DOJI: "Doji",
+  HAMMER: "Hammer",
+  SHOOTING_STAR: "Shooting star",
+  BULLISH_ENGULFING: "Bullish engulfing",
+  BEARISH_ENGULFING: "Bearish engulfing",
+  MORNING_STAR: "Morning star",
+  EVENING_STAR: "Evening star",
+  THREE_WHITE_SOLDIERS: "Three white soldiers",
+  THREE_BLACK_CROWS: "Three black crows",
 };
-const BEARISH_PATTERNS: PatternKind[] = ["DOUBLE_TOP", "TRIPLE_TOP", "HEAD_AND_SHOULDERS"];
+const BEARISH_PATTERNS: PatternKind[] = ["DOUBLE_TOP", "TRIPLE_TOP", "HEAD_AND_SHOULDERS", "SHOOTING_STAR", "BEARISH_ENGULFING", "EVENING_STAR", "THREE_BLACK_CROWS"];
 
 function money(value: number | null | undefined) {
   if (value == null || !Number.isFinite(value)) return "—";

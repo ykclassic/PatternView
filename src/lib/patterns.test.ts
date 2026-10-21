@@ -48,7 +48,7 @@ function makeBottomCandles(lastClose = 105): Candle[] {
 }
 
 test("returns no pattern when there are too few closed candles", () => {
-  assert.equal(detectLatestPattern(makeTopCandles().slice(0, 20)), null);
+  assert.equal(detectLatestPattern(makeTopCandles().slice(0, 2)), null);
 });
 
 test("detects a double top and waits for a neckline close", () => {
@@ -225,4 +225,39 @@ test("never confirms a head-and-shoulders pivot without its three right-side can
   const afterRightBars = detectLatestPattern(fullCandles);
   assert.notEqual(beforeRightBars?.kind, "HEAD_AND_SHOULDERS");
   assert.equal(afterRightBars?.kind, "HEAD_AND_SHOULDERS");
+});
+
+function makeCandles(rows: Array<[number, number, number, number]>): Candle[] {
+  return rows.map(([open, high, low, close], index) => ({
+    time: 1_700_000_000 + index * 3600, open, high, low, close, volume: 100,
+  }));
+}
+
+test("detects doji, hammer and shooting-star candle shapes", () => {
+  assert.equal(detectLatestPattern(makeCandles([[100, 102, 98, 101], [100, 102, 98, 101], [100, 106, 94, 100.2]]) )?.kind, "DOJI");
+  assert.equal(detectLatestPattern(makeCandles([[100, 102, 98, 101], [100, 102, 98, 101], [100, 100.2, 90, 99.5]]) )?.kind, "HAMMER");
+  assert.equal(detectLatestPattern(makeCandles([[100, 102, 98, 101], [100, 102, 98, 101], [100, 110, 99.8, 100.5]]) )?.kind, "SHOOTING_STAR");
+});
+
+test("detects bullish and bearish engulfing patterns", () => {
+  assert.equal(detectLatestPattern(makeCandles([[100, 102, 98, 101], [105, 106, 99, 100], [99, 108, 98, 107]]) )?.kind, "BULLISH_ENGULFING");
+  assert.equal(detectLatestPattern(makeCandles([[100, 102, 98, 101], [100, 107, 99, 106], [107, 108, 98, 99]]) )?.kind, "BEARISH_ENGULFING");
+});
+
+test("detects morning and evening star heuristics", () => {
+  assert.equal(detectLatestPattern(makeCandles([[110, 111, 99, 100], [100, 102, 98, 100.5], [100, 108, 99, 107]]) )?.kind, "MORNING_STAR");
+  assert.equal(detectLatestPattern(makeCandles([[100, 111, 99, 110], [110, 112, 108, 110.5], [110, 111, 102, 103]]) )?.kind, "EVENING_STAR");
+});
+
+test("detects three white soldiers and three black crows", () => {
+  assert.equal(detectLatestPattern(makeCandles([[100, 106, 99, 105], [105, 111, 104, 110], [110, 116, 109, 115]]) )?.kind, "THREE_WHITE_SOLDIERS");
+  assert.equal(detectLatestPattern(makeCandles([[115, 116, 109, 110], [110, 111, 104, 105], [105, 106, 99, 100]]) )?.kind, "THREE_BLACK_CROWS");
+});
+
+test("candlestick patterns do not fabricate trade levels", () => {
+  const pattern = detectLatestPattern(makeCandles([[100, 102, 98, 101], [105, 106, 99, 100], [99, 108, 98, 107]]));
+  assert.equal(pattern?.status, "CONFIRMED");
+  assert.equal(pattern?.entry, null);
+  assert.equal(pattern?.stopLoss, null);
+  assert.equal(pattern?.takeProfit, null);
 });
