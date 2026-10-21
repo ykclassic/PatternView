@@ -31,3 +31,14 @@ Existing browser-local scan history retains provider, timeframe, timestamps, rul
 3. Data: no historical accuracy claim until a reviewed, versioned labeled dataset has been evaluated.
 4. Existing live market-data and detector safety checks remain green.
 5. No order execution, private exchange credentials, alerting or ML added.
+
+
+## Frozen evaluation contract (v1.1)
+
+The evaluator requires a non-empty dataset, runtime-valid pattern labels, known symbol/timeframe values, unique observation IDs, strictly increasing timestamps within each symbol/timeframe series, a single explicit split per invocation, and a SHA-256 digest identifying the frozen prediction artifact. Duplicate pattern definitions and malformed digests are rejected. Reports include actual-positive and predicted-positive support counts.
+
+Assign split membership deterministically by UTC packet end time within each symbol/timeframe series, before annotation outcomes or detector predictions are examined. Record the exact UTC boundaries in the generated dataset manifest and do not allow an observation to change split after labels or predictions have been reviewed. Evaluate each split in a separate invocation; reserve the latest temporal split as the final test set. The evaluator verifies the supplied split field but cannot itself prove that a caller honestly assigned that field or that detector logic did not read future candles.
+
+Prediction artifact format and hash must be frozen before evaluation. The digest is provenance, not proof that predictions were generated without look-ahead. Keep a reproducible prediction-generation command and test that detector input contains only candles at or before the observation cutoff. Report confusion counts and support denominators; confidence intervals should be added to the reporting layer once the independent labels and prediction artifact are frozen.
+
+The evaluator still treats the task as single-label classification. `null` represents the explicit no-pattern outcome; `AMBIGUOUS` is an annotation disposition and must be adjudicated or excluded before evaluation, not passed as a detector pattern.
