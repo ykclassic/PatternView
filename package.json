@@ -9,7 +9,8 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "tsx --test src/lib/patterns.test.ts src/lib/evaluation.test.ts src/lib/scan-history.test.ts src/app/api/market/klines/route.test.ts",
-    "dataset:prepare": "tsx scripts/prepare-historical-dataset.ts"
+    "dataset:prepare": "tsx scripts/prepare-historical-dataset.ts",
+    "predictions:freeze": "tsx scripts/generate-historical-predictions.ts"
   },
   "dependencies": {
     "lightweight-charts": "^5.0.8",
