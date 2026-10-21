@@ -364,11 +364,14 @@ function detectCandlestickPattern(candles: Candle[]): DetectedPattern | null {
 }
 
 export function detectLatestPattern(candles: Candle[]): DetectedPattern | null {
-  const candlestick = detectCandlestickPattern(candles);
-  if (candlestick) return candlestick;
+  // Prefer multi-swing chart structures when one is present. Otherwise the
+  // latest small-body candle in many synthetic fixtures and real markets can
+  // mask a higher-level formation as a doji.
   const double = detectDoublePattern(candles);
   const advanced = detectAdvancedPattern(candles);
-  if (!double) return advanced;
-  if (!advanced) return double;
-  return (advanced.thirdPivotTime ?? advanced.secondPivotTime) >= double.secondPivotTime ? advanced : double;
+  const chartPattern = !double ? advanced
+    : !advanced ? double
+    : (advanced.thirdPivotTime ?? advanced.secondPivotTime) >= double.secondPivotTime ? advanced : double;
+  if (chartPattern) return chartPattern;
+  return detectCandlestickPattern(candles);
 }
