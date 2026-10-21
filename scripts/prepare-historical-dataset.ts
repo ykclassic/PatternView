@@ -8,6 +8,8 @@ const SYMBOLS = ["BTCUSDT", "ETHUSDT", "SOLUSDT"] as const;
 const TIMEFRAMES: Timeframe[] = ["15m", "1h", "4h", "1d"];
 const LIMIT = 720;
 const WINDOW_SIZE = 120;
+const KRAKEN_PAIRS: Record<string, string> = { BTCUSDT: "XBTUSDT", ETHUSDT: "ETHUSDT", SOLUSDT: "SOLUSDT" };
+const KRAKEN_INTERVALS: Record<Timeframe, number> = { "15m": 15, "1h": 60, "4h": 240, "1d": 1440 };
 const INTERVAL_SECONDS: Record<Timeframe, number> = {
   "15m": 900, "1h": 3600, "4h": 14400, "1d": 86400,
 };
@@ -33,35 +35,82 @@ function validateCandles(candles: Candle[], interval: number): void {
   }
 }
 
-async function fetchCandles(symbol: string, timeframe: Timeframe): Promise<Candle[]> {
+async function fetchBinanceCandles(symbol: string, timeframe: Timeframe): Promise<Candle[]> {
   const interval = INTERVAL_SECONDS[timeframe];
-  const endTime = Date.now();
   const url = new URL("https://api.binance.com/api/v3/klines");
   url.searchParams.set("symbol", symbol);
   url.searchParams.set("interval", timeframe);
   url.searchParams.set("limit", String(LIMIT));
-  url.searchParams.set("endTime", String(endTime));
+  url.searchParams.set("endTime", String(Date.now()));
   const response = await fetch(url, {
     headers: { Accept: "application/json" },
     signal: AbortSignal.timeout(15_000),
   });
-  if (!response.ok) throw new Error(`Binance returned HTTP ${response.status} for ${symbol} ${timeframe}`);
+  if (!response.ok) throw new Error(`Binance HTTP ${response.status}`);
   const payload: unknown = await response.json();
-  if (!Array.isArray(payload)) throw new Error(`Invalid response for ${symbol} ${timeframe}`);
+  if (!Array.isArray(payload)) throw new Error("Invalid Binance response");
   const nowSeconds = Math.floor(Date.now() / 1000);
   const candles = payload.map((row): Candle => {
-    if (!Array.isArray(row) || row.length < 6) throw new Error("Malformed kline row");
+    if (!Array.isArray(row) || row.length < 6) throw new Error("Malformed Binance kline row");
     return {
       time: Math.floor(Number(row[0]) / 1000),
-      open: Number(row[1]),
-      high: Number(row[2]),
-      low: Number(row[3]),
-      close: Number(row[4]),
-      volume: Number(row[5]),
+      open: Number(row[1]), high: Number(row[2]), low: Number(row[3]),
+      close: Number(row[4]), volume: Number(row[5]),
     };
   }).filter((c) => c.time + interval <= nowSeconds);
   validateCandles(candles, interval);
   return candles;
+}
+
+async function fetchKrakenCandles(symbol: string, timeframe: Timeframe): Promise<Candle[]> {
+  const pair = KRAKEN_PAIRS[symbol];
+  if (!pair) throw new Error(`No Kraken pair mapping for ${symbol}`);
+  const interval = INTERVAL_SECONDS[timeframe];
+  const url = new URL("https://api.kraken.com/0/public/OHLC");
+  url.searchParams.set("pair", pair);
+  url.searchParams.set("interval", String(KRAKEN_INTERVALS[timeframe]));
+  const response = await fetch(url, {
+    headers: { Accept: "application/json" },
+    signal: AbortSignal.timeout(15_000),
+  });
+  if (!response.ok) throw new Error(`Kraken HTTP ${response.status}`);
+  const payload: unknown = await response.json();
+  if (typeof payload !== "object" || payload === null || !("result" in payload) ||
+      typeof payload.result !== "object" || payload.result === null) {
+    throw new Error("Invalid Kraken OHLC response");
+  }
+  if ("error" in payload && Array.isArray(payload.error) && payload.error.length > 0) {
+    throw new Error("Kraken OHLC API returned an error");
+  }
+  const result = payload.result as Record<string, unknown>;
+  const key = Object.keys(result).find((candidate) => candidate !== "last");
+  const rows = key ? result[key] : null;
+  if (!Array.isArray(rows)) throw new Error("Kraken OHLC result rows missing");
+  const nowSeconds = Math.floor(Date.now() / 1000);
+  const candles = rows.map((row): Candle => {
+    if (!Array.isArray(row) || row.length < 7) throw new Error("Malformed Kraken OHLC row");
+    return {
+      time: Math.floor(Number(row[0])),
+      open: Number(row[1]), high: Number(row[2]), low: Number(row[3]),
+      close: Number(row[4]), volume: Number(row[6]),
+    };
+  }).filter((c) => c.time + interval <= nowSeconds);
+  validateCandles(candles, interval);
+  return candles;
+}
+
+async function fetchCandles(symbol: string, timeframe: Timeframe): Promise<{ candles: Candle[]; source: string }> {
+  try {
+    return { candles: await fetchBinanceCandles(symbol, timeframe), source: "Binance Spot public klines API" };
+  } catch (binanceError) {
+    try {
+      return { candles: await fetchKrakenCandles(symbol, timeframe), source: "Kraken public OHLC API" };
+    } catch (krakenError) {
+      const binanceMessage = binanceError instanceof Error ? binanceError.message : "unknown error";
+      const krakenMessage = krakenError instanceof Error ? krakenError.message : "unknown error";
+      throw new Error(`No source available for ${symbol} ${timeframe}; Binance: ${binanceMessage}; Kraken: ${krakenMessage}`);
+    }
+  }
 }
 
 async function main(): Promise<void> {
@@ -80,11 +129,12 @@ async function main(): Promise<void> {
 
   for (const symbol of SYMBOLS) {
     for (const timeframe of TIMEFRAMES) {
-      const candles = await fetchCandles(symbol, timeframe);
+      const fetched = await fetchCandles(symbol, timeframe);
+      const candles = fetched.candles;
       const serialized = JSON.stringify(candles);
       const file = `${symbol}-${timeframe}.json`;
       await writeFile(join(OUTPUT_DIR, file), `${JSON.stringify({
-        symbol, timeframe, source: "Binance Spot public klines API",
+        symbol, timeframe, source: fetched.source,
         interval_seconds: INTERVAL_SECONDS[timeframe],
         retrieved_at_utc: new Date().toISOString(),
         candle_count: candles.length,
@@ -118,7 +168,7 @@ async function main(): Promise<void> {
     dataset_id: "patternview-crypto-spot-v1",
     dataset_version: "1.0.0",
     prepared_at_utc: new Date().toISOString(),
-    source: "Binance Spot public klines API",
+    source_policy: "Binance Spot public klines API with Kraken public OHLC fallback",
     symbol_count: SYMBOLS.length,
     timeframe_count: TIMEFRAMES.length,
     candle_count_per_series: LIMIT,
