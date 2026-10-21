@@ -19,18 +19,24 @@ const REQUEST_TIMEOUT_MS = 4_000;
 type BinanceKline = [number, string, string, string, string, string, ...unknown[]];
 
 function validCandleRows(payload: unknown): payload is unknown[][] {
-  return Array.isArray(payload) && payload.length > 0 && payload.every((row) => {
+  if (!Array.isArray(payload) || payload.length === 0) return false;
+  let previousTime = 0;
+  for (const row of payload) {
     if (!Array.isArray(row) || row.length < 6) return false;
     const values = row.slice(0, 6).map(Number);
     const [time, open, high, low, close, volume] = values;
-    return values.every(Number.isFinite) && time > 0 && open > 0 &&
-      high >= Math.max(open, close, low) && low > 0 &&
-      low <= Math.min(open, close) && volume >= 0;
-  });
+    if (!values.every(Number.isFinite) || time <= previousTime || open <= 0 ||
+      high < Math.max(open, close, low) || low <= 0 ||
+      low > Math.min(open, close) || volume < 0) return false;
+    previousTime = time;
+  }
+  return true;
 }
 
 function validKrakenRows(payload: unknown): payload is unknown[][] {
-  return Array.isArray(payload) && payload.length > 0 && payload.every((row) => {
+  if (!Array.isArray(payload) || payload.length === 0) return false;
+  let previousTime = 0;
+  for (const row of payload) {
     if (!Array.isArray(row) || row.length < 8) return false;
     const time = Number(row[0]);
     const open = Number(row[1]);
@@ -38,10 +44,12 @@ function validKrakenRows(payload: unknown): payload is unknown[][] {
     const low = Number(row[3]);
     const close = Number(row[4]);
     const volume = Number(row[6]);
-    return [time, open, high, low, close, volume].every(Number.isFinite) &&
-      time > 0 && open > 0 && high >= Math.max(open, close, low) &&
-      low > 0 && low <= Math.min(open, close) && volume >= 0;
-  });
+    if (![time, open, high, low, close, volume].every(Number.isFinite) ||
+      time <= previousTime || open <= 0 || high < Math.max(open, close, low) ||
+      low <= 0 || low > Math.min(open, close) || volume < 0) return false;
+    previousTime = time;
+  }
+  return true;
 }
 
 async function fetchJson(url: URL): Promise<unknown> {

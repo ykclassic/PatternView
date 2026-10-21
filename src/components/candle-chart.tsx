@@ -94,22 +94,16 @@ export default function CandleChart({ candles, pattern }: Props) {
           title: "Invalidation",
         }),
       ];
-      markers.setMarkers([
-        {
-          time: pattern.firstPivotTime as Time,
-          position: pattern.kind === "DOUBLE_TOP" ? "aboveBar" : "belowBar",
-          color: "#f5c451",
-          shape: pattern.kind === "DOUBLE_TOP" ? "arrowDown" : "arrowUp",
-          text: "1",
-        },
-        {
-          time: pattern.secondPivotTime as Time,
-          position: pattern.kind === "DOUBLE_TOP" ? "aboveBar" : "belowBar",
-          color: "#f5c451",
-          shape: pattern.kind === "DOUBLE_TOP" ? "arrowDown" : "arrowUp",
-          text: "2",
-        },
-      ]);
+      const bearish = ["DOUBLE_TOP", "TRIPLE_TOP", "HEAD_AND_SHOULDERS"].includes(pattern.kind);
+      const pivotTimes = [pattern.firstPivotTime, pattern.secondPivotTime, pattern.thirdPivotTime]
+        .filter((time): time is number => typeof time === "number");
+      markers.setMarkers(pivotTimes.map((time, index) => ({
+        time: time as Time,
+        position: bearish ? "aboveBar" : "belowBar",
+        color: "#f5c451",
+        shape: bearish ? "arrowDown" : "arrowUp",
+        text: String(index + 1),
+      })));
     } else {
       markers.setMarkers([]);
     }
