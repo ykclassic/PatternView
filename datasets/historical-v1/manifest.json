@@ -1,7 +1,7 @@
 {
   "dataset_id": "patternview-crypto-spot-v1",
   "version": "1.0.0",
-  "status": "RAW_DATA_PREPARED_LABELING_REQUIRED",
+  "status": "ENGINEERING_PIPELINE_READY_REFERENCE_LABELS_PENDING",
   "created_utc": "2026-10-21",
   "market": "spot",
   "symbols": [
@@ -79,24 +79,29 @@
     "test": "Latest UTC windows, kept untouched until the label guide and detector version are frozen"
   },
   "annotation": {
-    "status": "NOT_STARTED",
-    "independent_review_required": true,
+    "status": "OPTIONAL_FOR_APP_RELEASE_REQUIRED_FOR_HISTORICAL_PERFORMANCE_CLAIMS",
+    "independent_review_required_for_claims": true,
     "minimum_reviewers_per_packet": 2,
-    "adjudication_required_for_disagreement": true
+    "adjudication_required_for_disagreement": true,
+    "release_policy": "Do not block app engineering/deployment on human annotation. Do not publish validated historical metrics until independent reference labels are frozen.",
+    "automated_provisional_labels_allowed": true,
+    "automated_provisional_label_semantics": "Exploratory silver labels only; not independent ground truth and not accepted for historical-performance claims."
   },
   "evaluation": {
-    "status": "NOT_RUN",
+    "status": "BLOCKED_FOR_ACCEPTED_PERFORMANCE_METRICS",
     "detector_rule_version": null,
     "raw_snapshot_sha256": null,
     "annotation_sha256": null,
     "prediction_artifact_sha256": null,
-    "temporal_split_assignment": "Not assigned; freeze deterministic timestamp-based boundaries before labeling/evaluation."
+    "temporal_split_assignment": "Use deterministic chronological split assignment in the preparation output; preserve exact boundaries in generated manifest."
   },
   "limitations": [
     "A 720-candle retrieval per symbol/timeframe is a pilot sample, not a representative sample of all market regimes.",
     "Labels must be assigned independently of detector predictions.",
     "This dataset does not measure profitability or trading outcomes.",
     "Dataset snapshots and labels must be reviewed before any metric is reported as historical performance.",
-    "Static provider policy identifies primary and fallback sources; actual source is recorded per series in generated snapshot metadata."
+    "Static provider policy identifies primary and fallback sources; actual source is recorded per series in generated snapshot metadata.",
+    "Human annotation is not an app release gate; it remains a gate for accepted historical-performance claims.",
+    "Automatically generated silver labels are not independent ground truth and must not be reported as validated detector performance."
   ]
 }
