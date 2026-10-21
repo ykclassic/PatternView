@@ -48,7 +48,7 @@ function makeBottomCandles(lastClose = 105): Candle[] {
 }
 
 test("returns no pattern when there are too few closed candles", () => {
-  assert.equal(detectLatestPattern(makeTopCandles().slice(0, 20)), null);
+  assert.equal(detectLatestPattern(makeTopCandles().slice(0, 2)), null);
 });
 
 test("detects a double top and waits for a neckline close", () => {
@@ -234,14 +234,14 @@ function makeCandles(rows: Array<[number, number, number, number]>): Candle[] {
 }
 
 test("detects doji, hammer and shooting-star candle shapes", () => {
-  assert.equal(detectLatestPattern(makeCandles([[100, 106, 94, 100.2]]) )?.kind, "DOJI");
-  assert.equal(detectLatestPattern(makeCandles([[100, 101, 90, 99]]) )?.kind, "HAMMER");
-  assert.equal(detectLatestPattern(makeCandles([[100, 110, 99, 101]]) )?.kind, "SHOOTING_STAR");
+  assert.equal(detectLatestPattern(makeCandles([[100, 102, 98, 101], [100, 102, 98, 101], [100, 106, 94, 100.2]]) )?.kind, "DOJI");
+  assert.equal(detectLatestPattern(makeCandles([[100, 102, 98, 101], [100, 102, 98, 101], [100, 101, 90, 99]]) )?.kind, "HAMMER");
+  assert.equal(detectLatestPattern(makeCandles([[100, 102, 98, 101], [100, 102, 98, 101], [100, 110, 99, 101]]) )?.kind, "SHOOTING_STAR");
 });
 
 test("detects bullish and bearish engulfing patterns", () => {
-  assert.equal(detectLatestPattern(makeCandles([[105, 106, 99, 100], [99, 108, 98, 107]]) )?.kind, "BULLISH_ENGULFING");
-  assert.equal(detectLatestPattern(makeCandles([[100, 107, 99, 106], [107, 108, 98, 99]]) )?.kind, "BEARISH_ENGULFING");
+  assert.equal(detectLatestPattern(makeCandles([[100, 102, 98, 101], [105, 106, 99, 100], [99, 108, 98, 107]]) )?.kind, "BULLISH_ENGULFING");
+  assert.equal(detectLatestPattern(makeCandles([[100, 102, 98, 101], [100, 107, 99, 106], [107, 108, 98, 99]]) )?.kind, "BEARISH_ENGULFING");
 });
 
 test("detects morning and evening star heuristics", () => {
@@ -255,7 +255,7 @@ test("detects three white soldiers and three black crows", () => {
 });
 
 test("candlestick patterns do not fabricate trade levels", () => {
-  const pattern = detectLatestPattern(makeCandles([[105, 106, 99, 100], [99, 108, 98, 107]]));
+  const pattern = detectLatestPattern(makeCandles([[100, 102, 98, 101], [105, 106, 99, 100], [99, 108, 98, 107]]));
   assert.equal(pattern?.status, "CONFIRMED");
   assert.equal(pattern?.entry, null);
   assert.equal(pattern?.stopLoss, null);
