@@ -6,7 +6,7 @@
 
 - BTC/USDT, ETH/USDT and SOL/USDT
 - 15m, 1h, 4h and 1d timeframes
-- Read-only candlestick data from Binance's public spot market-data endpoint
+- Read-only candlestick data with Binance host failover and Kraken OHLC fallback
 - Deterministic double-top and double-bottom detection
 - Confirmed pivot markers, neckline and invalidation level overlays
 - Explainable criteria and conditional measured-move entry/stop/target proposals
@@ -21,7 +21,7 @@ npm install
 npm run dev
 ```
 
-Open http://localhost:3000. The app reads public market data from `https://api.binance.com`. To override the origin, set `NEXT_PUBLIC_MARKET_DATA_BASE_URL` in a local `.env.local` file. No credentials are needed.
+Open http://localhost:3000. The app reads public market data from Binance, then falls back to Kraken OHLC if all Binance hosts fail. Both providers are accessed server-side with bounded request timeouts and normalized candle validation. No credentials are needed.
 
 ## Quality checks
 
@@ -47,4 +47,4 @@ GitHub Actions runs these checks on pull requests and pushes to `main`.
 
 - Initial detector scans the latest double top or double bottom only.
 - Historical replay, multi-pattern ranking, robust backtesting, rate-limit coordination, alternate data providers and production deployment are future acceptance gates.
-- Public market-data availability and rate limits depend on the upstream provider.
+- CoinGecko, CoinMarketCap and DefiLlama are not currently used as candle fallbacks because their general-purpose endpoints do not consistently provide the same exchange-pair OHLCV contract for every supported timeframe. Public market-data availability and rate limits depend on the upstream provider.
