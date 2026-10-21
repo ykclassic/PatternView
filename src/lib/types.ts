@@ -51,4 +51,5 @@ export interface ScanHistoryRecord {
   ruleVersion: string;
   result: DetectedPattern | null;
   candleSnapshot: Candle[];
+  error?: string;
 }
