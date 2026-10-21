@@ -39,7 +39,7 @@ function relativeDifference(a: number, b: number): number {
  * have closed on its right. It uses only the supplied closed-candle sequence.
  * This is a heuristic, not a profitability claim or a probability estimate.
  */
-export function detectLatestPattern(candles: Candle[]): DetectedPattern | null {
+function detectDoublePattern(candles: Candle[]): DetectedPattern | null {
   if (candles.length < 40) return null;
   if (
     candles.some((c) =>
@@ -153,4 +153,134 @@ export function detectLatestPattern(candles: Candle[]): DetectedPattern | null {
   }
 
   return candidate;
+}
+
+
+function detectAdvancedPattern(candles: Candle[]): DetectedPattern | null {
+  if (candles.length < 40 || candles.some((c) =>
+    ![c.time, c.open, c.high, c.low, c.close, c.volume].every(Number.isFinite) ||
+    c.open <= 0 || c.low <= 0 || c.volume < 0 ||
+    c.high < Math.max(c.open, c.close, c.low) ||
+    c.low > Math.min(c.open, c.close)
+  )) return null;
+
+  const pivots = findPivots(candles);
+  const lastClose = candles[candles.length - 1].close;
+  const candidates: Array<{ index: number; pattern: DetectedPattern }> = [];
+
+  const build = (
+    kind: DetectedPattern["kind"],
+    points: Pivot[],
+    neckline: number,
+    peakOrTrough: number,
+    isBearish: boolean,
+    explanation: string[],
+  ) => {
+    const breakout = isBearish ? lastClose < neckline : lastClose > neckline;
+    const invalidation = isBearish
+      ? peakOrTrough * (1 + INVALIDATION_BUFFER)
+      : peakOrTrough * (1 - INVALIDATION_BUFFER);
+    const invalid = isBearish ? lastClose > invalidation : lastClose < invalidation;
+    const target = isBearish
+      ? neckline - (peakOrTrough - neckline)
+      : neckline + (neckline - peakOrTrough);
+    const pattern: DetectedPattern = {
+      kind,
+      status: invalid ? "INVALIDATED" : breakout ? "QUALIFIED" : "WAITING FOR BREAKOUT",
+      firstPivotTime: points[0].time,
+      secondPivotTime: points[1].time,
+      thirdPivotTime: points[2]?.time,
+      neckline,
+      invalidation,
+      breakoutLevel: neckline,
+      entry: breakout ? neckline : null,
+      stopLoss: breakout ? invalidation : null,
+      takeProfit: breakout && target > 0 ? target : null,
+      explanation: [
+        ...explanation,
+        breakout
+          ? (isBearish ? "The latest closed candle is below the neckline." : "The latest closed candle is above the neckline.")
+          : (isBearish ? "A closed candle below the neckline is required." : "A closed candle above the neckline is required."),
+        "Only confirmed pivots are used; each pivot requires three closed candles on its right.",
+        "Levels are conditional references, not trade instructions or a profitability estimate.",
+      ],
+    };
+    candidates.push({ index: points[points.length - 1].index, pattern });
+  };
+
+  // Triple tops/bottoms: three similarly priced pivots with intervening structure.
+  for (let i = 0; i < pivots.length; i += 1) {
+    const first = pivots[i];
+    for (let j = i + 1; j < pivots.length; j += 1) {
+      const second = pivots[j];
+      if (second.index - first.index > MAX_PIVOT_SEPARATION) break;
+      if (second.kind !== first.kind || second.index - first.index < MIN_PIVOT_SEPARATION) continue;
+      for (let k = j + 1; k < pivots.length; k += 1) {
+        const third = pivots[k];
+        if (third.index - first.index > MAX_PIVOT_SEPARATION) break;
+        if (third.kind !== first.kind || third.index - second.index < MIN_PIVOT_SEPARATION) continue;
+        const levelDiff = Math.max(
+          relativeDifference(first.price, second.price),
+          relativeDifference(second.price, third.price),
+          relativeDifference(first.price, third.price),
+        );
+        if (levelDiff > RELATIVE_TOLERANCE) continue;
+        const between = pivots.filter((p) => p.kind !== first.kind && p.index > first.index && p.index < third.index);
+        if (between.length < 2) continue;
+        if (first.kind === "high") {
+          const neckline = Math.min(...between.map((p) => p.price));
+          build("TRIPLE_TOP", [first, second, third], neckline, Math.max(first.price, second.price, third.price), true, [
+            `Three confirmed swing highs are within ${(levelDiff * 100).toFixed(2)}% of one another.`,
+            "The neckline is the lowest confirmed intervening swing low.",
+          ]);
+        } else {
+          const neckline = Math.max(...between.map((p) => p.price));
+          build("TRIPLE_BOTTOM", [first, second, third], neckline, Math.min(first.price, second.price, third.price), false, [
+            `Three confirmed swing lows are within ${(levelDiff * 100).toFixed(2)}% of one another.`,
+            "The neckline is the highest confirmed intervening swing high.",
+          ]);
+        }
+      }
+    }
+  }
+
+  // Head-and-shoulders: alternating high/low/high/low/high pivots.
+  for (let i = 0; i + 4 < pivots.length; i += 1) {
+    const p = pivots.slice(i, i + 5);
+    if (p.map((x) => x.kind).join(",") === "high,low,high,low,high") {
+      const shouldersDiff = relativeDifference(p[0].price, p[4].price);
+      const headAbove = p[2].price > Math.max(p[0].price, p[4].price) * 1.02;
+      if (shouldersDiff <= 0.03 && headAbove && p[4].index - p[0].index <= MAX_PIVOT_SEPARATION) {
+        const neckline = (p[1].price + p[3].price) / 2;
+        build("HEAD_AND_SHOULDERS", [p[0], p[2], p[4]], neckline, p[2].price, true, [
+          "The middle swing high exceeds both shoulders by at least 2%.",
+          `Shoulder heights differ by ${(shouldersDiff * 100).toFixed(2)}%, within the 3.00% rule.`,
+          "The neckline is the average of the two confirmed intervening swing lows.",
+        ]);
+      }
+    }
+    if (p.map((x) => x.kind).join(",") === "low,high,low,high,low") {
+      const shouldersDiff = relativeDifference(p[0].price, p[4].price);
+      const headBelow = p[2].price < Math.min(p[0].price, p[4].price) * 0.98;
+      if (shouldersDiff <= 0.03 && headBelow && p[4].index - p[0].index <= MAX_PIVOT_SEPARATION) {
+        const neckline = (p[1].price + p[3].price) / 2;
+        build("INVERSE_HEAD_AND_SHOULDERS", [p[0], p[2], p[4]], neckline, p[2].price, false, [
+          "The middle swing low is at least 2% below both shoulders.",
+          `Shoulder depths differ by ${(shouldersDiff * 100).toFixed(2)}%, within the 3.00% rule.`,
+          "The neckline is the average of the two confirmed intervening swing highs.",
+        ]);
+      }
+    }
+  }
+
+  candidates.sort((a, b) => b.index - a.index);
+  return candidates[0]?.pattern ?? null;
+}
+
+export function detectLatestPattern(candles: Candle[]): DetectedPattern | null {
+  const double = detectDoublePattern(candles);
+  const advanced = detectAdvancedPattern(candles);
+  if (!double) return advanced;
+  if (!advanced) return double;
+  return (advanced.thirdPivotTime ?? advanced.secondPivotTime) > double.secondPivotTime ? advanced : double;
 }
