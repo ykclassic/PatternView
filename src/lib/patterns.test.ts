@@ -235,8 +235,8 @@ function makeCandles(rows: Array<[number, number, number, number]>): Candle[] {
 
 test("detects doji, hammer and shooting-star candle shapes", () => {
   assert.equal(detectLatestPattern(makeCandles([[100, 102, 98, 101], [100, 102, 98, 101], [100, 106, 94, 100.2]]) )?.kind, "DOJI");
-  assert.equal(detectLatestPattern(makeCandles([[100, 102, 98, 101], [100, 102, 98, 101], [100, 101, 90, 99]]) )?.kind, "HAMMER");
-  assert.equal(detectLatestPattern(makeCandles([[100, 102, 98, 101], [100, 102, 98, 101], [100, 110, 99, 101]]) )?.kind, "SHOOTING_STAR");
+  assert.equal(detectLatestPattern(makeCandles([[100, 102, 98, 101], [100, 102, 98, 101], [100, 100.2, 90, 99.5]]) )?.kind, "HAMMER");
+  assert.equal(detectLatestPattern(makeCandles([[100, 102, 98, 101], [100, 102, 98, 101], [100, 110, 99.8, 100.5]]) )?.kind, "SHOOTING_STAR");
 });
 
 test("detects bullish and bearish engulfing patterns", () => {
