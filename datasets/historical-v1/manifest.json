@@ -1,16 +1,47 @@
 {
   "dataset_id": "patternview-crypto-spot-v1",
   "version": "1.0.0",
-  "status": "PREPARATION",
+  "status": "RAW_DATA_PREPARED_LABELING_REQUIRED",
   "created_utc": "2026-10-21",
   "market": "spot",
-  "symbols": ["BTCUSDT", "ETHUSDT", "SOLUSDT"],
-  "timeframes": ["15m", "1h", "4h", "1d"],
+  "symbols": [
+    "BTCUSDT",
+    "ETHUSDT",
+    "SOLUSDT"
+  ],
+  "timeframes": [
+    "15m",
+    "1h",
+    "4h",
+    "1d"
+  ],
   "source": {
-    "venue": "Binance Spot public klines API",
-    "endpoint": "https://api.binance.com/api/v3/klines",
+    "primary_provider_policy": {
+      "venue": "Binance Spot public klines API",
+      "endpoint": "https://api.binance.com/api/v3/klines"
+    },
+    "fallback_provider_policy": {
+      "venue": "Kraken public OHLC API",
+      "endpoint": "https://api.kraken.com/0/public/OHLC"
+    },
+    "actual_provider": "Recorded independently in each generated snapshot and prepared-manifest.json; never infer actual provider from this static manifest.",
+    "pair_mappings": {
+      "BTCUSDT": {
+        "binance": "BTCUSDT",
+        "kraken": "XBTUSDT"
+      },
+      "ETHUSDT": {
+        "binance": "ETHUSDT",
+        "kraken": "ETHUSDT"
+      },
+      "SOLUSDT": {
+        "binance": "SOLUSDT",
+        "kraken": "SOLUSDT"
+      }
+    },
     "credentials_required": false,
-    "retrieval_script": "scripts/prepare-historical-dataset.ts"
+    "retrieval_script": "scripts/prepare-historical-dataset.ts",
+    "failure_diagnostics": "The preparation manifest records sanitized per-series provider outcomes. Raw exception text is not intended as provenance."
   },
   "sampling": {
     "candles_per_symbol_timeframe": 720,
@@ -57,12 +88,15 @@
     "status": "NOT_RUN",
     "detector_rule_version": null,
     "raw_snapshot_sha256": null,
-    "annotation_sha256": null
+    "annotation_sha256": null,
+    "prediction_artifact_sha256": null,
+    "temporal_split_assignment": "Not assigned; freeze deterministic timestamp-based boundaries before labeling/evaluation."
   },
   "limitations": [
     "A 720-candle retrieval per symbol/timeframe is a pilot sample, not a representative sample of all market regimes.",
     "Labels must be assigned independently of detector predictions.",
     "This dataset does not measure profitability or trading outcomes.",
-    "Dataset snapshots and labels must be reviewed before any metric is reported as historical performance."
+    "Dataset snapshots and labels must be reviewed before any metric is reported as historical performance.",
+    "Static provider policy identifies primary and fallback sources; actual source is recorded per series in generated snapshot metadata."
   ]
 }
