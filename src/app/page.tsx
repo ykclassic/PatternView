@@ -80,7 +80,7 @@ export default function Home() {
         <div className="chart-column panel">
           <div className="panel-heading chart-heading">
             <div><span className="instrument-symbol">{symbol.replace("USDT", "")}</span><span className="instrument-name">{symbol.replace("USDT", "")} / Tether</span><span className="market-chip">SPOT</span></div>
-            <span className="timeframe-label">{timeframe} <span>·</span> Binance public data</span>
+            <span className="timeframe-label">{timeframe} <span>·</span> Multi-provider public data</span>
           </div>
           <div className="price-strip">
             <div><span className="metric-label">LAST CLOSED</span><strong>{candles.length ? money(candles[candles.length - 1].close) : "—"}</strong><span className="metric-unit">USDT</span></div>
