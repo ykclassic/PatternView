@@ -1,0 +1,68 @@
+{
+  "dataset_id": "patternview-crypto-spot-v1",
+  "version": "1.0.0",
+  "status": "PREPARATION",
+  "created_utc": "2026-10-21",
+  "market": "spot",
+  "symbols": ["BTCUSDT", "ETHUSDT", "SOLUSDT"],
+  "timeframes": ["15m", "1h", "4h", "1d"],
+  "source": {
+    "venue": "Binance Spot public klines API",
+    "endpoint": "https://api.binance.com/api/v3/klines",
+    "credentials_required": false,
+    "retrieval_script": "scripts/prepare-historical-dataset.ts"
+  },
+  "sampling": {
+    "candles_per_symbol_timeframe": 720,
+    "window_size_candles": 120,
+    "window_stride_candles": 120,
+    "include_open_candle": false,
+    "window_end_label_semantics": "Annotate the formation, if any, that is identifiable using only the closed candles in this packet ending at packet.end_time."
+  },
+  "label_schema": {
+    "primary_label": [
+      "DOUBLE_TOP",
+      "DOUBLE_BOTTOM",
+      "TRIPLE_TOP",
+      "TRIPLE_BOTTOM",
+      "HEAD_AND_SHOULDERS",
+      "INVERSE_HEAD_AND_SHOULDERS",
+      "DOJI",
+      "HAMMER",
+      "SHOOTING_STAR",
+      "BULLISH_ENGULFING",
+      "BEARISH_ENGULFING",
+      "MORNING_STAR",
+      "EVENING_STAR",
+      "THREE_WHITE_SOLDIERS",
+      "THREE_BLACK_CROWS",
+      "NO_PATTERN",
+      "AMBIGUOUS"
+    ],
+    "multi_label": false,
+    "detector_predictions_visible_to_annotators": false
+  },
+  "splits": {
+    "train": "Earlier UTC windows only",
+    "validation": "Later UTC windows, separated by a temporal boundary",
+    "test": "Latest UTC windows, kept untouched until the label guide and detector version are frozen"
+  },
+  "annotation": {
+    "status": "NOT_STARTED",
+    "independent_review_required": true,
+    "minimum_reviewers_per_packet": 2,
+    "adjudication_required_for_disagreement": true
+  },
+  "evaluation": {
+    "status": "NOT_RUN",
+    "detector_rule_version": null,
+    "raw_snapshot_sha256": null,
+    "annotation_sha256": null
+  },
+  "limitations": [
+    "A 720-candle retrieval per symbol/timeframe is a pilot sample, not a representative sample of all market regimes.",
+    "Labels must be assigned independently of detector predictions.",
+    "This dataset does not measure profitability or trading outcomes.",
+    "Dataset snapshots and labels must be reviewed before any metric is reported as historical performance."
+  ]
+}
