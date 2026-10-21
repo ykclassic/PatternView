@@ -8,44 +8,109 @@ const BINANCE_API_HOSTS = [
   "https://api2.binance.com",
   "https://api3.binance.com",
 ] as const;
+const KRAKEN_PAIRS: Record<string, string> = {
+  BTCUSDT: "XBTUSDT",
+  ETHUSDT: "ETHUSDT",
+  SOLUSDT: "SOLUSDT",
+};
+const KRAKEN_INTERVALS: Record<string, number> = {
+  "15m": 15,
+  "1h": 60,
+  "4h": 240,
+  "1d": 1440,
+};
+const REQUEST_TIMEOUT_MS = 4_000;
 
-type KlinePayload = unknown[][];
+type BinanceKline = [number, string, string, string, string, string, ...unknown[]];
+type CandleRow = [number, string, string, string, string, string, ...unknown[]];
 
-async function fetchValidKlines(
-  host: string,
-  symbol: string,
-  interval: string,
-): Promise<KlinePayload> {
-  const upstreamUrl = new URL("/api/v3/klines", host);
-  upstreamUrl.searchParams.set("symbol", symbol);
-  upstreamUrl.searchParams.set("interval", interval);
-  upstreamUrl.searchParams.set("limit", "300");
+function validCandleRows(payload: unknown): payload is unknown[][] {
+  return (
+    Array.isArray(payload) &&
+    payload.length > 0 &&
+    payload.every((row) => {
+      if (!Array.isArray(row) || row.length < 6) return false;
+      const values = row.slice(0, 6).map(Number);
+      const [time, open, high, low, close, volume] = values;
+      return (
+        values.every(Number.isFinite) &&
+        time > 0 &&
+        open > 0 &&
+        high >= Math.max(open, close, low) &&
+        low > 0 &&
+        low <= Math.min(open, close) &&
+        volume >= 0
+      );
+    })
+  );
+}
 
-  const upstream = await fetch(upstreamUrl, {
+function toResponseCandles(rows: CandleRow[]): BinanceKline[] {
+  return rows.map((row) => [
+    Number(row[0]) * 1000,
+    String(row[1]),
+    String(row[2]),
+    String(row[3]),
+    String(row[4]),
+    String(row[5]),
+  ]);
+}
+
+async function fetchJson(url: URL): Promise<unknown> {
+  const response = await fetch(url, {
     cache: "no-store",
-    signal: AbortSignal.timeout(4_000),
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     headers: { Accept: "application/json" },
   });
+  if (!response.ok) throw new Error(`http_${response.status}`);
+  return response.json();
+}
 
-  if (!upstream.ok) {
-    throw new Error(`upstream_http_${upstream.status}`);
+async function fetchBinance(host: string, symbol: string, interval: string): Promise<unknown[][]> {
+  const url = new URL("/api/v3/klines", host);
+  url.searchParams.set("symbol", symbol);
+  url.searchParams.set("interval", interval);
+  url.searchParams.set("limit", "300");
+  const payload = await fetchJson(url);
+  if (!validCandleRows(payload)) throw new Error("invalid_payload");
+  return payload;
+}
+
+async function fetchKraken(symbol: string, interval: string): Promise<BinanceKline[]> {
+  const url = new URL("https://api.kraken.com/0/public/OHLC");
+  url.searchParams.set("pair", KRAKEN_PAIRS[symbol]);
+  url.searchParams.set("interval", String(KRAKEN_INTERVALS[interval]));
+  const payload = await fetchJson(url);
+
+  if (!payload || typeof payload !== "object" || !("result" in payload) || !("error" in payload)) {
+    throw new Error("invalid_envelope");
+  }
+  const envelope = payload as { error: unknown; result: unknown };
+  if (!Array.isArray(envelope.error) || envelope.error.length > 0) {
+    throw new Error("provider_error");
+  }
+  if (!envelope.result || typeof envelope.result !== "object") {
+    throw new Error("invalid_result");
   }
 
-  const payload: unknown = await upstream.json();
-  if (
-    !Array.isArray(payload) ||
-    payload.length === 0 ||
-    payload.some(
-      (row) =>
-        !Array.isArray(row) ||
-        row.length < 6 ||
-        row.slice(0, 6).some((value) => !Number.isFinite(Number(value))),
-    )
-  ) {
-    throw new Error("invalid_upstream_payload");
-  }
+  const result = envelope.result as Record<string, unknown>;
+  const key = Object.keys(result).find((candidate) => candidate !== "last");
+  if (!key || !Array.isArray(result[key])) throw new Error("missing_pair_data");
 
-  return payload as KlinePayload;
+  const rawRows = result[key] as unknown[][];
+  // Kraken includes the current, incomplete candle as the final row. It is
+  // discarded here; the client also enforces closed-candle boundaries.
+  const rows = rawRows.slice(0, -1);
+  if (!validCandleRows(rows)) throw new Error("invalid_payload");
+  return toResponseCandles(rows as CandleRow[]);
+}
+
+function recordFailure(provider: string, reason: string) {
+  // Never log raw provider bodies, URLs, request headers, or exception text.
+  console.warn("[market-data] provider attempt failed", {
+    provider,
+    reason_code: reason.slice(0, 40),
+  });
 }
 
 export async function GET(request: NextRequest) {
@@ -53,41 +118,40 @@ export async function GET(request: NextRequest) {
   const interval = request.nextUrl.searchParams.get("interval") ?? "";
 
   if (!ALLOWED_SYMBOLS.has(symbol) || !ALLOWED_INTERVALS.has(interval)) {
-    return NextResponse.json(
-      { error: "Unsupported symbol or timeframe." },
-      { status: 400 },
-    );
+    return NextResponse.json({ error: "Unsupported symbol or timeframe." }, { status: 400 });
   }
 
-  // Binance publishes equivalent market-data API hosts. Race the read-only
-  // requests so a regional or transient failure at one host does not break the UI.
   const attempts = await Promise.allSettled(
-    BINANCE_API_HOSTS.map((host) => fetchValidKlines(host, symbol, interval)),
+    BINANCE_API_HOSTS.map((host) => fetchBinance(host, symbol, interval)),
   );
   const successful = attempts.find(
-    (attempt): attempt is PromiseFulfilledResult<KlinePayload> =>
-      attempt.status === "fulfilled",
+    (attempt): attempt is PromiseFulfilledResult<unknown[][]> => attempt.status === "fulfilled",
   );
-
   if (successful) {
     return NextResponse.json(successful.value, {
-      headers: { "Cache-Control": "no-store" },
+      headers: { "Cache-Control": "no-store", "X-Market-Data-Provider": "binance" },
     });
   }
 
-  const allRateLimited = attempts.every(
-    (attempt) =>
-      attempt.status === "rejected" &&
-      attempt.reason instanceof Error &&
-      attempt.reason.message === "upstream_http_429",
-  );
+  for (const attempt of attempts) {
+    if (attempt.status === "rejected") {
+      const reason = attempt.reason instanceof Error ? attempt.reason.message : "unknown_failure";
+      recordFailure("binance", reason);
+    }
+  }
+
+  try {
+    const candles = await fetchKraken(symbol, interval);
+    return NextResponse.json(candles, {
+      headers: { "Cache-Control": "no-store", "X-Market-Data-Provider": "kraken" },
+    });
+  } catch (cause) {
+    const reason = cause instanceof Error ? cause.message : "unknown_failure";
+    recordFailure("kraken", reason);
+  }
 
   return NextResponse.json(
-    {
-      error: allRateLimited
-        ? "Market data provider rate limit reached. Retry shortly."
-        : "Market data provider is temporarily unavailable.",
-    },
-    { status: allRateLimited ? 429 : 502 },
+    { error: "Market data is temporarily unavailable from all supported providers." },
+    { status: 502, headers: { "Cache-Control": "no-store" } },
   );
 }
