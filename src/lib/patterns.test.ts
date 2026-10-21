@@ -220,9 +220,9 @@ test("rejects head-and-shoulders near misses when the head does not clear the re
 });
 
 test("never confirms a head-and-shoulders pivot without its three right-side candles", () => {
-  const candles = makeHeadShouldersCandles().slice(0, 39);
-  const beforeRightBars = detectLatestPattern(candles.slice(0, 39));
-  const afterRightBars = detectLatestPattern(candles);
+  const fullCandles = makeHeadShouldersCandles();
+  const beforeRightBars = detectLatestPattern(fullCandles.slice(0, 39));
+  const afterRightBars = detectLatestPattern(fullCandles);
   assert.notEqual(beforeRightBars?.kind, "HEAD_AND_SHOULDERS");
   assert.equal(afterRightBars?.kind, "HEAD_AND_SHOULDERS");
 });
