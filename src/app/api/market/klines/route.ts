@@ -84,7 +84,7 @@ async function fetchKraken(symbol: string, interval: string): Promise<BinanceKli
   // Kraken's final row is the still-open candle; discard it before validation.
   const rows = (result[key] as unknown[][]).slice(0, -1);
   if (!validKrakenRows(rows)) throw new Error("invalid_payload");
-  return rows.map((row) => [
+  return rows.map((row): BinanceKline => [
     Number(row[0]) * 1000,
     String(row[1]),
     String(row[2]),
