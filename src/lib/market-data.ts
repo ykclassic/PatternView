@@ -1,9 +1,5 @@
 import type { Candle, SymbolPair, Timeframe } from "@/lib/types";
 
-const API_BASE =
-  process.env.NEXT_PUBLIC_MARKET_DATA_BASE_URL?.replace(/\/$/, "") ??
-  "https://api.binance.com";
-
 const INTERVALS: Record<Timeframe, string> = {
   "15m": "15m",
   "1h": "1h",
@@ -16,24 +12,32 @@ export async function fetchCandles(
   timeframe: Timeframe,
   signal?: AbortSignal,
 ): Promise<Candle[]> {
-  const url = new URL("/api/v3/klines", API_BASE);
-  url.searchParams.set("symbol", symbol);
-  url.searchParams.set("interval", INTERVALS[timeframe]);
-  url.searchParams.set("limit", "300");
+  const params = new URLSearchParams({
+    symbol,
+    interval: INTERVALS[timeframe],
+  });
+  const response = await fetch(`/api/market/klines?${params.toString()}`, {
+    signal,
+    cache: "no-store",
+  });
+  const payload: unknown = await response.json().catch(() => null);
 
-  const response = await fetch(url, { signal, cache: "no-store" });
   if (!response.ok) {
-    throw new Error(
-      response.status === 429
-        ? "Market data rate limit reached. Wait briefly and retry."
-        : `Market data provider returned HTTP ${response.status}.`,
-    );
+    const message =
+      typeof payload === "object" &&
+      payload !== null &&
+      "error" in payload &&
+      typeof payload.error === "string"
+        ? payload.error
+        : `Market data request failed (HTTP ${response.status}).`;
+    throw new Error(message);
   }
 
-  const rows: unknown = await response.json();
-  if (!Array.isArray(rows)) throw new Error("Market data response was not a candle array.");
+  if (!Array.isArray(payload)) {
+    throw new Error("Market data response was not a candle array.");
+  }
 
-  const candles = rows.map((row): Candle => {
+  const candles = payload.map((row): Candle => {
     if (!Array.isArray(row) || row.length < 6) {
       throw new Error("Market data provider returned an invalid candle.");
     }
@@ -47,8 +51,16 @@ export async function fetchCandles(
     };
   });
 
-  if (candles.some((c) => !Object.values(c).every(Number.isFinite))) {
-    throw new Error("Market data contained non-finite values.");
+  if (
+    candles.some(
+      (c) =>
+        !Object.values(c).every(Number.isFinite) ||
+        c.high < c.low ||
+        c.high < Math.max(c.open, c.close) ||
+        c.low > Math.min(c.open, c.close),
+    )
+  ) {
+    throw new Error("Market data contained invalid candle values.");
   }
 
   // Exclude the current, still-open candle to avoid decisions changing mid-bar.
