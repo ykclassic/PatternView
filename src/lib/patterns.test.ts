@@ -138,3 +138,16 @@ test("does not label a flat near-miss as a pattern", () => {
   }));
   assert.equal(detectLatestPattern(flat), null);
 });
+
+function makeTripleBottomCandles(): Candle[] {
+  return Array.from({ length: 70 }, (_, index): Candle => {
+    const candle: Candle = { time: 1_700_000_000 + index * 3600, open: 105, high: 106, low: 104, close: 105, volume: 1000 };
+    if ([8, 24, 40].includes(index)) Object.assign(candle, { low: index === 24 ? 100.2 : 100, close: 103 });
+    if ([16, 32].includes(index)) Object.assign(candle, { high: 110, close: 107 });
+    return candle;
+  });
+}
+
+test("detects a triple bottom", () => {
+  assert.equal(detectLatestPattern(makeTripleBottomCandles())?.kind, "TRIPLE_BOTTOM");
+});
