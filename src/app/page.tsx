@@ -84,8 +84,8 @@ export default function Home() {
           </div>
           <div className="price-strip">
             <div><span className="metric-label">LAST CLOSED</span><strong>{candles.length ? money(candles[candles.length - 1].close) : "—"}</strong><span className="metric-unit">USDT</span></div>
-            <div><span className="metric-label">24H HIGH</span><strong>{candles.length ? money(Math.max(...candles.slice(-24).map((c) => c.high))) : "—"}</strong></div>
-            <div><span className="metric-label">24H LOW</span><strong>{candles.length ? money(Math.min(...candles.slice(-24).map((c) => c.low))) : "—"}</strong></div>
+            <div><span className="metric-label">24H HIGH</span><strong>{candles.length ? money(Math.max(...candles.filter((c) => c.time >= candles[candles.length - 1].time - 24 * 3600).map((c) => c.high))) : "—"}</strong></div>
+            <div><span className="metric-label">24H LOW</span><strong>{candles.length ? money(Math.min(...candles.filter((c) => c.time >= candles[candles.length - 1].time - 24 * 3600).map((c) => c.low))) : "—"}</strong></div>
             <div><span className="metric-label">CLOSED BARS</span><strong>{candles.length || "—"}</strong></div>
           </div>
           {loading && candles.length === 0 ? <div className="chart-placeholder"><span className="loader" />Loading closed candles…</div> : <CandleChart candles={candles} pattern={pattern} />}
