@@ -7,9 +7,10 @@
 - BTC/USDT, ETH/USDT and SOL/USDT
 - 15m, 1h, 4h and 1d timeframes
 - Read-only candlestick data with Binance host failover and Kraken OHLC fallback
-- Deterministic double-top and double-bottom detection
+- Deterministic double top, double bottom, triple top, triple bottom, head-and-shoulders and inverse head-and-shoulders detection
 - Confirmed pivot markers, neckline and invalidation level overlays
 - Explainable criteria and conditional measured-move entry/stop/target proposals
+- Browser-local scan history with provider provenance and candle snapshots for reproducibility
 - No order execution, API keys or exchange account access
 
 ## Run locally
@@ -43,8 +44,13 @@ GitHub Actions runs these checks on pull requests and pushes to `main`.
 - This is a deterministic starter heuristic, not a validated trading strategy. It does not estimate win probability or claim profitability.
 - Entry, stop-loss and target levels are conditional reference levels only. PatternView never submits or routes orders.
 
+## Phase 1 product requirements and acceptance
+
+See [Phase 1 PRD](docs/PHASE1_PRD.md) and [acceptance evidence matrix](docs/PHASE1_ACCEPTANCE_MATRIX.md). The matrix distinguishes CI results from live production checks and labeled historical detection evaluation.
+
 ## Current limitations
 
-- Initial detector scans the latest double top or double bottom only.
-- Historical replay, multi-pattern ranking, robust backtesting, rate-limit coordination, alternate data providers and production deployment are future acceptance gates.
+- The detector returns the latest qualifying formation, not a ranked list of every simultaneous formation.
+- Scan history is stored in the current browser only and is capped at 20 records; it is not synced across devices.
+- Labeled historical evaluation, precision/recall measurement, viewport QA and exhaustive live production checks remain release acceptance gates.
 - CoinGecko, CoinMarketCap and DefiLlama are not currently used as candle fallbacks because their general-purpose endpoints do not consistently provide the same exchange-pair OHLCV contract for every supported timeframe. Public market-data availability and rate limits depend on the upstream provider.
