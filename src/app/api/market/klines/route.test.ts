@@ -80,3 +80,27 @@ test("does not return malformed Kraken candle data", async () => {
   const response = await GET(new NextRequest("http://localhost/api/market/klines?symbol=SOLUSDT&interval=1d"));
   assert.equal(response.status, 502);
 });
+
+test("serves the exact provider interval for all 12 supported pair/timeframe combinations", async () => {
+  const symbols = ["BTCUSDT", "ETHUSDT", "SOLUSDT"];
+  const intervals = ["15m", "1h", "4h", "1d"];
+  for (const symbol of symbols) {
+    for (const interval of intervals) {
+      let selected: URL | null = null;
+      globalThis.fetch = (async (input) => {
+        const url = new URL(String(input));
+        if (url.hostname === "api.binance.com") return new Response(null, { status: 503 });
+        if (url.hostname === "api1.binance.com") {
+          selected = url;
+          return Response.json([binanceRow]);
+        }
+        return new Response(null, { status: 503 });
+      }) as typeof fetch;
+      const response = await GET(new NextRequest(`http://localhost/api/market/klines?symbol=${symbol}&interval=${interval}`));
+      assert.equal(response.status, 200, `${symbol} ${interval} should return data`);
+      assert.equal(selected?.searchParams.get("symbol"), symbol);
+      assert.equal(selected?.searchParams.get("interval"), interval);
+      assert.equal(response.headers.get("x-market-data-provider"), "binance");
+    }
+  }
+});
