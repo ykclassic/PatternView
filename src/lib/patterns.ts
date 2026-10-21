@@ -282,5 +282,5 @@ export function detectLatestPattern(candles: Candle[]): DetectedPattern | null {
   const advanced = detectAdvancedPattern(candles);
   if (!double) return advanced;
   if (!advanced) return double;
-  return (advanced.thirdPivotTime ?? advanced.secondPivotTime) > double.secondPivotTime ? advanced : double;
+  return (advanced.thirdPivotTime ?? advanced.secondPivotTime) >= double.secondPivotTime ? advanced : double;
 }
