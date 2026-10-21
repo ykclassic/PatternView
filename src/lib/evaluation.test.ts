@@ -1,9 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { evaluateLabeledObservations } from "./evaluation";
+import { evaluateLabeledObservations, type LabeledObservation } from "./evaluation";
 
 const digest = "a".repeat(64);
-const observations = [
+const observations: LabeledObservation[] = [
   { id: "1", pair: "BTCUSDT", timeframe: "1h", candleEndTime: 1_700_000_000, split: "test" as const, expectedPattern: "DOJI" as const, detectedPattern: "DOJI" as const },
   { id: "2", pair: "BTCUSDT", timeframe: "1h", candleEndTime: 1_700_003_600, split: "test" as const, expectedPattern: "DOJI" as const, detectedPattern: null },
   { id: "3", pair: "ETHUSDT", timeframe: "4h", candleEndTime: 1_700_014_400, split: "test" as const, expectedPattern: null, detectedPattern: "DOJI" as const },
