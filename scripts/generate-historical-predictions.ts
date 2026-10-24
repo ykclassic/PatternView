@@ -72,11 +72,11 @@ function assignChronologicalSplits(packets: Packet[]): Map<string, "train" | "va
   }
   const result = new Map<string, "train" | "validation" | "test">();
   for (const group of groups.values()) {
-    group.sort((a, b) => a.end_time - b.end_time);
-    const ids = new Set<string>();
-    for (const packet of group) {
-      if (ids.has(packet.sample_id)) throw new Error(`Duplicate packet ID: ${packet.sample_id}`);
-      ids.add(packet.sample_id);
+    group.sort((a, b) => a.start_time - b.start_time || a.end_time - b.end_time);
+    for (let index = 1; index < group.length; index += 1) {
+      if (group[index].start_time <= group[index - 1].end_time) {
+        throw new Error(`Overlapping packet windows in series ${group[index].symbol}:${group[index].timeframe}`);
+      }
     }
     const trainEnd = Math.max(1, Math.floor(group.length * 0.6));
     const validationEnd = Math.max(trainEnd, Math.floor(group.length * 0.8));
