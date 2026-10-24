@@ -15,7 +15,7 @@ The deployed site is reachable and the production market-data pipeline passed a 
 - Homepage returned HTTP 200 and rendered the PatternView title, pair/timeframe controls, read-only notice, chart workspace, interpretation panel, scan history, and no-execution disclaimer in server-rendered HTML.
 - All 12 production market-data combinations returned HTTP 200, provider `kraken`, 720 candles, valid OHLCV values, strictly increasing timestamps, and exact requested interval spacing.
 - Phase 3 PR #11 was merged after CI passed unit tests, type-check, lint, and production build. Dataset preparation and prediction freezing succeeded on 2026-10-24: 72 packets, 36 train / 12 validation / 24 test; input and prediction SHA-256 digests matched.
-- Detector tests cover positive/wait/qualified/invalidation paths for the six classical formations, negative/near-miss fixtures, and closed-pivot confirmation. These are synthetic correctness tests, not historical accuracy evidence.
+- Detector tests cover positive/wait/qualified/invalidation paths for the six classical formations, negative/near-miss fixtures for those structures and all nine supported candlestick patterns, and closed-pivot confirmation. These are synthetic correctness tests, not historical accuracy evidence.
 
 ## Release blockers
 
