@@ -48,7 +48,7 @@ jobs:
           if (packetCount === 0 || packetCount !== predictionCount || packetCount !== manifest.packet_count) {
             throw new Error('Packet and prediction counts do not match');
           }
-          const labelRows = labels.trim().split(/\\r?\\n/).filter(Boolean).map(JSON.parse);
+          const labelRows = labels.trim().split(/\r?\n/).filter(Boolean).map(JSON.parse);
           if (labelRows.length !== packetCount || labelRows.some((row) => row.disposition !== 'UNREVIEWED' || row.expected_pattern !== null || 'detector_output' in row)) {
             throw new Error('Label template must cover every packet and remain blinded/unreviewed');
           }
