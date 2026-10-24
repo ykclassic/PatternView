@@ -271,3 +271,35 @@ test("rejects double-top and double-bottom near misses outside the similarity to
   bottomNearMiss[22] = { ...bottomNearMiss[22], low: 97.5, close: 103 };
   assert.notEqual(detectLatestPattern(bottomNearMiss)?.kind, "DOUBLE_BOTTOM");
 });
+
+test("rejects clear near misses for each supported candlestick pattern", () => {
+  const ordinaryCandle = makeCandles([[100, 103, 99, 102]]);
+  assert.notEqual(detectLatestPattern(ordinaryCandle)?.kind, "DOJI");
+  assert.notEqual(detectLatestPattern(ordinaryCandle)?.kind, "HAMMER");
+  assert.notEqual(detectLatestPattern(ordinaryCandle)?.kind, "SHOOTING_STAR");
+
+  assert.notEqual(
+    detectLatestPattern(makeCandles([[105, 106, 99, 100], [100, 103, 99, 102]]))?.kind,
+    "BULLISH_ENGULFING",
+  );
+  assert.notEqual(
+    detectLatestPattern(makeCandles([[100, 106, 99, 105], [105, 106, 102, 104]]))?.kind,
+    "BEARISH_ENGULFING",
+  );
+  assert.notEqual(
+    detectLatestPattern(makeCandles([[110, 111, 99, 100], [100, 102, 98, 100.5], [100, 101, 97, 99]]))?.kind,
+    "MORNING_STAR",
+  );
+  assert.notEqual(
+    detectLatestPattern(makeCandles([[100, 111, 99, 110], [110, 112, 108, 110.5], [110, 111, 105, 106]]))?.kind,
+    "EVENING_STAR",
+  );
+  assert.notEqual(
+    detectLatestPattern(makeCandles([[100, 106, 99, 105], [105, 107, 103, 104], [104, 106, 102, 103]]))?.kind,
+    "THREE_WHITE_SOLDIERS",
+  );
+  assert.notEqual(
+    detectLatestPattern(makeCandles([[115, 116, 109, 110], [110, 111, 104, 105], [105, 111, 100, 109]]))?.kind,
+    "THREE_BLACK_CROWS",
+  );
+});
