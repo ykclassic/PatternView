@@ -25,6 +25,8 @@ jobs:
         run: npm run dataset:prepare
       - name: Freeze predictions
         run: npm run predictions:freeze
+      - name: Generate blinded reference-label template
+        run: npm run labels:template
       - name: Verify prediction manifest digests and artifact separation
         run: |
           node <<'NODE'
@@ -34,6 +36,7 @@ jobs:
           const manifest = JSON.parse(fs.readFileSync(path + 'prediction-manifest-v1.json', 'utf8'));
           const packets = fs.readFileSync(path + 'blind-packets.jsonl', 'utf8');
           const predictions = fs.readFileSync(path + 'predictions-v1.jsonl', 'utf8');
+          const labels = fs.readFileSync(path + 'reference-labels-v1.jsonl', 'utf8');
           const sha256 = (value) => crypto.createHash('sha256').update(value).digest('hex');
           if (sha256(packets) !== manifest.input_sha256) throw new Error('Input packet digest mismatch');
           if (sha256(predictions) !== manifest.prediction_sha256) throw new Error('Prediction digest mismatch');
@@ -45,13 +48,18 @@ jobs:
           if (packetCount === 0 || packetCount !== predictionCount || packetCount !== manifest.packet_count) {
             throw new Error('Packet and prediction counts do not match');
           }
+          const labelRows = labels.trim().split(/\r?\n/).filter(Boolean).map(JSON.parse);
+          if (labelRows.length !== packetCount || labelRows.some((row) => row.disposition !== 'UNREVIEWED' || row.expected_pattern !== null || 'detector_output' in row)) {
+            throw new Error('Label template must cover every packet and remain blinded/unreviewed');
+          }
           console.log(JSON.stringify({
             packet_count: packetCount,
             input_sha256: manifest.input_sha256,
             prediction_sha256: manifest.prediction_sha256,
             split_counts: manifest.split_counts,
             labels_included: manifest.labels_included,
-            performance_metrics_included: manifest.performance_metrics_included
+            performance_metrics_included: manifest.performance_metrics_included,
+            blinded_label_template_count: labelRows.length
           }, null, 2));
           NODE
       - name: Upload blinded dataset for independent annotation
@@ -64,6 +72,7 @@ jobs:
             datasets/historical-v1/*-*.json
             datasets/historical-v1/blind-packets.jsonl
             datasets/historical-v1/prepared-manifest.json
+            datasets/historical-v1/reference-labels-v1.jsonl
       - name: Upload frozen prediction artifact separately
         uses: actions/upload-artifact@v4
         with:
