@@ -1,0 +1,75 @@
+name: Historical Prediction Artifacts
+
+on:
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  prepare-and-freeze:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install dependencies
+        run: npm install
+      - name: Prepare historical blind dataset
+        run: npm run dataset:prepare
+      - name: Freeze predictions
+        run: npm run predictions:freeze
+      - name: Verify prediction manifest digests and artifact separation
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+          const crypto = require('node:crypto');
+          const path = 'datasets/historical-v1/';
+          const manifest = JSON.parse(fs.readFileSync(path + 'prediction-manifest-v1.json', 'utf8'));
+          const packets = fs.readFileSync(path + 'blind-packets.jsonl', 'utf8');
+          const predictions = fs.readFileSync(path + 'predictions-v1.jsonl', 'utf8');
+          const sha256 = (value) => crypto.createHash('sha256').update(value).digest('hex');
+          if (sha256(packets) !== manifest.input_sha256) throw new Error('Input packet digest mismatch');
+          if (sha256(predictions) !== manifest.prediction_sha256) throw new Error('Prediction digest mismatch');
+          if (manifest.labels_included !== false || manifest.performance_metrics_included !== false) {
+            throw new Error('Prediction manifest must not contain labels or performance metrics');
+          }
+          const packetCount = packets.trim().split(/\r?\n/).filter(Boolean).length;
+          const predictionCount = predictions.trim().split(/\r?\n/).filter(Boolean).length;
+          if (packetCount === 0 || packetCount !== predictionCount || packetCount !== manifest.packet_count) {
+            throw new Error('Packet and prediction counts do not match');
+          }
+          console.log(JSON.stringify({
+            packet_count: packetCount,
+            input_sha256: manifest.input_sha256,
+            prediction_sha256: manifest.prediction_sha256,
+            split_counts: manifest.split_counts,
+            labels_included: manifest.labels_included,
+            performance_metrics_included: manifest.performance_metrics_included
+          }, null, 2));
+          NODE
+      - name: Upload blinded dataset for independent annotation
+        uses: actions/upload-artifact@v4
+        with:
+          name: patternview-blind-dataset
+          if-no-files-found: error
+          retention-days: 30
+          path: |
+            datasets/historical-v1/*-*.json
+            datasets/historical-v1/blind-packets.jsonl
+            datasets/historical-v1/prepared-manifest.json
+      - name: Upload frozen prediction artifact separately
+        uses: actions/upload-artifact@v4
+        with:
+          name: patternview-frozen-predictions
+          if-no-files-found: error
+          retention-days: 30
+          path: |
+            datasets/historical-v1/predictions-v1.jsonl
+            datasets/historical-v1/prediction-manifest-v1.json

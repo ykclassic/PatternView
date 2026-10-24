@@ -261,3 +261,13 @@ test("candlestick patterns do not fabricate trade levels", () => {
   assert.equal(pattern?.stopLoss, null);
   assert.equal(pattern?.takeProfit, null);
 });
+
+test("rejects double-top and double-bottom near misses outside the similarity tolerance", () => {
+  const topNearMiss = makeTopCandles();
+  topNearMiss[22] = { ...topNearMiss[22], high: 113.5, close: 107 };
+  assert.notEqual(detectLatestPattern(topNearMiss)?.kind, "DOUBLE_TOP");
+
+  const bottomNearMiss = makeBottomCandles();
+  bottomNearMiss[22] = { ...bottomNearMiss[22], low: 97.5, close: 103 };
+  assert.notEqual(detectLatestPattern(bottomNearMiss)?.kind, "DOUBLE_BOTTOM");
+});

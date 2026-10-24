@@ -126,6 +126,7 @@ async function main(): Promise<void> {
     candles: Candle[];
   }> = [];
   const snapshotDigests: Record<string, string> = {};
+  const snapshotCounts: Record<string, number> = {};
 
   for (const symbol of SYMBOLS) {
     for (const timeframe of TIMEFRAMES) {
@@ -142,9 +143,19 @@ async function main(): Promise<void> {
         candles,
       }, null, 2)}\n`, "utf8");
       snapshotDigests[file] = sha256(serialized);
+      snapshotCounts[file] = candles.length;
 
-      for (let start = 0; start + WINDOW_SIZE <= candles.length; start += WINDOW_SIZE) {
-        const window = candles.slice(start, start + WINDOW_SIZE);
+      const windows: Candle[][] = [];
+      for (let start = 0; start < candles.length; start += WINDOW_SIZE) {
+        windows.push(candles.slice(start, start + WINDOW_SIZE));
+      }
+      // Do not silently discard a short tail: merge it into the prior window so every
+      // closed candle belongs to exactly one non-overlapping packet.
+      if (windows.length > 1 && windows[windows.length - 1].length < 40) {
+        const tail = windows.pop();
+        if (tail) windows[windows.length - 1].push(...tail);
+      }
+      for (const window of windows) {
         const end = window[window.length - 1].time;
         packets.push({
           sample_id: `${symbol}-${timeframe}-${end}`,
@@ -171,8 +182,9 @@ async function main(): Promise<void> {
     source_policy: "Binance Spot public klines API with Kraken public OHLC fallback",
     symbol_count: SYMBOLS.length,
     timeframe_count: TIMEFRAMES.length,
-    candle_count_per_series: LIMIT,
-    window_size: WINDOW_SIZE,
+    requested_candle_limit: LIMIT,
+    closed_candle_count_by_series: snapshotCounts,
+    nominal_window_size: WINDOW_SIZE,
     packet_count: packets.length,
     snapshot_sha256: snapshotDigests,
     blind_packets_sha256: sha256(packetText),
