@@ -22,7 +22,7 @@ The generated artifact records the split for each packet. Within each symbol/tim
 ## Guardrails
 
 - Detector inputs are bounded to each packet; later packets and future candles are never passed to a detector invocation.
-- The script refuses malformed candles, bad packet boundaries, duplicate IDs, and empty packet files.
+- The script refuses malformed candles, bad packet boundaries, duplicate IDs, overlapping packet windows within a symbol/timeframe series, and empty packet files.
 - Prediction artifact digests support reproducibility but do not prove data authenticity or detector correctness.
 - Predictions are not labels. Do not use predictions to create or adjudicate the reference-label file.
 - Human annotation does not block app development or deployment. Until trustworthy reference labels exist, metrics are not accepted as historical performance and no accuracy or profitability claim is permitted.
