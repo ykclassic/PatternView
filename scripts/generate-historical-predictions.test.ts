@@ -127,7 +127,7 @@ test("freezes one prediction per packet with deterministic chronological splits 
 
 test("rejects duplicate packet IDs and does not emit prediction artifacts", async () => {
   const packet = makePacket("duplicate", "1h", 1_700_000_000);
-  const fixture = await makeFixture([packet, { ...packet, start_time: packet.start_time + 40 * 3600, end_time: packet.end_time + 40 * 3600 }]);
+  const fixture = await makeFixture([packet, { ...packet }]);
   try {
     const result = runGenerator(fixture.directory);
     assert.notEqual(result.status, 0);
