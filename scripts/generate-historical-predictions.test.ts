@@ -161,3 +161,17 @@ test("rejects an empty blind packet file", async () => {
     await rm(fixture.directory, { recursive: true, force: true });
   }
 });
+
+test("rejects overlapping packet windows that could leak candles across chronological splits", async () => {
+  const interval = intervalSeconds["1h"];
+  const earlier = makePacket("earlier", "1h", 1_700_000_000);
+  const overlapping = makePacket("overlapping", "1h", 1_700_000_000 + 20 * interval);
+  const fixture = await makeFixture([earlier, overlapping]);
+  try {
+    const result = runGenerator(fixture.directory);
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /Overlapping packet windows/);
+  } finally {
+    await rm(fixture.directory, { recursive: true, force: true });
+  }
+});
