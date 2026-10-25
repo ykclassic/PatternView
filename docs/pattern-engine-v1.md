@@ -4,7 +4,7 @@
 This first deterministic engine version provides configurable, causal pivot detection; double-top/double-bottom candidates; and first-pass triangle classification. It is an experimental scanner, not a trade-execution system. It does not claim calibrated confidence or profitability.
 
 ## Input contract
-- Input is a chronological array of completed OHLCV candles.
+- Input is a chronological array of completed OHLCV candles. `Candle.time` must be the candle close/availability timestamp, not its open timestamp. Provider open timestamps must be converted using the known timeframe duration before calling the engine; the engine deliberately does not guess a timeframe from timestamps.
 - Candle timestamps must be strictly increasing.
 - OHLCV values must be finite and internally consistent; prices must be positive and volume non-negative.
 - Historical replay must call the engine with only candles available at the decision time. The engine cannot infer a safe as-of cutoff if later candles are included in the input.
