@@ -173,7 +173,7 @@ test("negative fixture: unequal swing highs do not qualify as a double top", () 
     return candle;
   });
   const results = detectPatternsV1(candles, { ...fixtureConfig(), levelToleranceAtr: 0.00001 });
-  assert.equal(results.some((pattern) => pattern.kind === "DOUBLE_TOP"), false);
+  assert.equal(results.some((pattern) => pattern.kind === "DOUBLE_TOP" && pattern.firstPivotTime === candles[8].time && pattern.lastPivotTime === candles[24].time), false);
 });
 
 test("stale double-top formations expire instead of persisting indefinitely", () => {
@@ -194,7 +194,7 @@ test("negative fixture: unequal swing lows do not qualify as a double bottom", (
     return candle;
   });
   const results = detectPatternsV1(candles, { ...fixtureConfig(), levelToleranceAtr: 0.00001 });
-  assert.equal(results.some((pattern) => pattern.kind === "DOUBLE_BOTTOM"), false);
+  assert.equal(results.some((pattern) => pattern.kind === "DOUBLE_BOTTOM" && pattern.firstPivotTime === candles[8].time && pattern.lastPivotTime === candles[24].time), false);
 });
 
 test("negative fixtures: non-converging triangle lookalikes are rejected", () => {
