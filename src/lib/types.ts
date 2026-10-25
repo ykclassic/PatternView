@@ -15,7 +15,14 @@ export type PatternKind =
   | "MORNING_STAR"
   | "EVENING_STAR"
   | "THREE_WHITE_SOLDIERS"
-  | "THREE_BLACK_CROWS";
+  | "THREE_BLACK_CROWS"
+  | "ASCENDING_TRIANGLE"
+  | "DESCENDING_TRIANGLE"
+  | "SYMMETRICAL_TRIANGLE"
+  | "BULL_FLAG"
+  | "BEAR_FLAG"
+  | "RISING_WEDGE"
+  | "FALLING_WEDGE";
 export type PatternStatus =
   | "FORMING"
   | "CONFIRMED"

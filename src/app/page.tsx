@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import CandleChart from "@/components/candle-chart";
 import { fetchMarketSnapshot } from "@/lib/market-data";
 import { appendScanHistory, makeScanId, readScanHistory } from "@/lib/scan-history";
-import { detectLatestPattern } from "@/lib/patterns";
+import { fetchAnalysisPattern } from "@/lib/analysis-api";
 import type { Candle, DetectedPattern, PatternKind, ScanHistoryRecord, SymbolPair, Timeframe } from "@/lib/types";
 
 const PAIRS: { value: SymbolPair; label: string }[] = [
@@ -29,8 +29,15 @@ const PATTERN_NAMES: Record<PatternKind, string> = {
   EVENING_STAR: "Evening star",
   THREE_WHITE_SOLDIERS: "Three white soldiers",
   THREE_BLACK_CROWS: "Three black crows",
+  ASCENDING_TRIANGLE: "Ascending triangle",
+  DESCENDING_TRIANGLE: "Descending triangle",
+  SYMMETRICAL_TRIANGLE: "Symmetrical triangle",
+  BULL_FLAG: "Bull flag",
+  BEAR_FLAG: "Bear flag",
+  RISING_WEDGE: "Rising wedge",
+  FALLING_WEDGE: "Falling wedge",
 };
-const BEARISH_PATTERNS: PatternKind[] = ["DOUBLE_TOP", "TRIPLE_TOP", "HEAD_AND_SHOULDERS", "SHOOTING_STAR", "BEARISH_ENGULFING", "EVENING_STAR", "THREE_BLACK_CROWS"];
+const BEARISH_PATTERNS: PatternKind[] = ["DOUBLE_TOP", "TRIPLE_TOP", "HEAD_AND_SHOULDERS", "SHOOTING_STAR", "BEARISH_ENGULFING", "EVENING_STAR", "THREE_BLACK_CROWS", "DESCENDING_TRIANGLE", "BEAR_FLAG", "RISING_WEDGE"];
 
 function money(value: number | null | undefined) {
   if (value == null || !Number.isFinite(value)) return "—";
@@ -56,7 +63,7 @@ export default function Home() {
       const snapshot = await fetchMarketSnapshot(symbol, timeframe, signal);
       const result = snapshot.candles;
       if (result.length < 40) throw new Error("Not enough closed candles for a meaningful pattern scan.");
-      const detected = detectLatestPattern(result);
+      const detected = await fetchAnalysisPattern(symbol, timeframe, signal);
       const scannedAt = new Date().toISOString();
       const record: ScanHistoryRecord = {
         id: makeScanId(symbol, timeframe, scannedAt),
@@ -67,7 +74,7 @@ export default function Home() {
         candleCount: result.length,
         firstCandleTime: result[0].time,
         lastCandleTime: result[result.length - 1].time,
-        ruleVersion: "phase1-patterns-v1",
+        ruleVersion: "patternview-engine-v1.1",
         result: detected,
         candleSnapshot: result,
       };
@@ -112,7 +119,7 @@ export default function Home() {
     <main className="app-shell">
       <header className="topbar">
         <a className="brand" href="#" aria-label="PatternView home"><span className="brand-mark">P</span><span>Pattern<span className="brand-muted">View</span></span></a>
-        <div className="topbar-right"><span className="live-dot" /> READ-ONLY MARKET DATA <span className="topbar-divider" /> PHASE 1</div>
+        <div className="topbar-right"><span className="live-dot" /> READ-ONLY MARKET DATA <span className="topbar-divider" /> BACKEND ENGINE V1.1</div>
       </header>
 
       <section className="page-heading">
@@ -190,7 +197,7 @@ export default function Home() {
         )}
       </section>
 
-      <footer className="disclaimer"><span className="disclaimer-icon">i</span><p><strong>Analysis only — no order execution.</strong> Pattern recognition is heuristic and can produce false positives. Entry, stop-loss, and target levels are conditional estimates, not financial advice. No profitability or predictive accuracy is claimed.</p><span className="footer-version">PATTERNVIEW · PHASE 1</span></footer>
+      <footer className="disclaimer"><span className="disclaimer-icon">i</span><p><strong>Analysis only — no order execution.</strong> Pattern recognition is heuristic and can produce false positives. Entry, stop-loss, and target levels are conditional estimates, not financial advice. No profitability or predictive accuracy is claimed.</p><span className="footer-version">PATTERNVIEW · ENGINE V1.1</span></footer>
     </main>
   );
 }
