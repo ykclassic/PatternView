@@ -304,8 +304,8 @@ function makeTriangle(
     qualityScore: score,
     isProbability: false,
     explanation: [
-      candidateExplanation("UPPER_BOUNDARY", "Upper boundary trend and slope measured from confirmed swing highs.", upperHorizontal ? "Boundary is horizontal." : "Boundary is converging.", upperChangeAtr, config.horizontalBoundaryAtr),
-      candidateExplanation("LOWER_BOUNDARY", "Lower boundary trend and slope measured from confirmed swing lows.", lowerHorizontal ? "Boundary is horizontal." : "Boundary is converging.", lowerChangeAtr, config.horizontalBoundaryAtr),
+      candidateExplanation("UPPER_BOUNDARY", "Upper boundary trend and slope measured from confirmed swing highs.", upperHorizontal || upperFalling, upperChangeAtr, config.horizontalBoundaryAtr),
+      candidateExplanation("LOWER_BOUNDARY", "Lower boundary trend and slope measured from confirmed swing lows.", lowerHorizontal || lowerRising, lowerChangeAtr, config.horizontalBoundaryAtr),
       candidateExplanation("BREAKOUT", breakout ? `Last close is outside the ${breakout === "UP" ? "upper" : "lower"} boundary.` : "No close outside the boundaries; direction remains unconfirmed.", Boolean(breakout)),
     ],
     warnings: ["Triangle boundaries are a first-pass linear approximation; validate against independent historical labels before production use.", "Quality score is not a probability."],
