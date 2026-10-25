@@ -1,0 +1,56 @@
+name: Production integrated smoke
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: patternview-production-smoke
+  cancel-in-progress: false
+
+jobs:
+  smoke:
+    name: Deployed frontend and API smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      FRONTEND_URL: https://patternview.vercel.app
+      PATTERNVIEW_API_URL: https://patternview-api.onrender.com
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Wait for deployed services
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 24); do
+            frontend_ok=0
+            backend_ok=0
+            if curl --silent --show-error --fail --max-time 20 "$FRONTEND_URL" >/dev/null; then frontend_ok=1; fi
+            if curl --silent --show-error --fail --max-time 20 "$PATTERNVIEW_API_URL/health" >/dev/null &&
+               curl --silent --show-error --fail --max-time 20 "$PATTERNVIEW_API_URL/ready" >/dev/null; then backend_ok=1; fi
+            if [ "$frontend_ok" -eq 1 ] && [ "$backend_ok" -eq 1 ]; then
+              echo "Frontend and API liveness/readiness are responding."
+              exit 0
+            fi
+            echo "Deployment not ready (attempt $attempt/24); retrying in 15 seconds."
+            sleep 15
+          done
+          echo "Timed out waiting for deployed frontend and API readiness." >&2
+          exit 1
+
+      - name: Run integrated production smoke
+        run: npm run smoke:production
