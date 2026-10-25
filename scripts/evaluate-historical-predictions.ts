@@ -6,10 +6,18 @@ import type { PatternKind, SymbolPair, Timeframe } from "../src/lib/types";
 
 type Split = "train" | "validation" | "test";
 type Disposition = "LABELED" | "AMBIGUOUS" | "UNREVIEWED";
+type PacketMetadata = {
+  sample_id: string;
+  symbol: SymbolPair;
+  timeframe: Timeframe;
+  start_time: number;
+  end_time: number;
+};
 type Prediction = {
   sample_id: string;
   symbol: SymbolPair;
   timeframe: Timeframe;
+  start_time: number;
   end_time: number;
   split: Split;
   detector_output: { pattern: PatternKind } | null;
@@ -29,6 +37,7 @@ type ReferenceLabel = {
   notes?: string;
 };
 const DATA_DIR = join(process.cwd(), "datasets", "historical-v1");
+const BLIND_PACKETS_FILE = join(DATA_DIR, "blind-packets.jsonl");
 const PREDICTIONS_FILE = join(DATA_DIR, "predictions-v1.jsonl");
 const PREDICTION_MANIFEST_FILE = join(DATA_DIR, "prediction-manifest-v1.json");
 const LABELS_FILE = join(DATA_DIR, "reference-labels-v1.jsonl");
@@ -63,6 +72,8 @@ function validIsoTimestamp(value: string): boolean {
 }
 
 async function main(): Promise<void> {
+  const blindPacketText = await readFile(BLIND_PACKETS_FILE, "utf8");
+  const packets = readJsonl<PacketMetadata>(blindPacketText, "blind packets");
   const predictionText = await readFile(PREDICTIONS_FILE, "utf8");
   const predictionManifest = JSON.parse(await readFile(PREDICTION_MANIFEST_FILE, "utf8")) as {
     rule_version: string;
@@ -72,6 +83,9 @@ async function main(): Promise<void> {
     labels_included: boolean;
     performance_metrics_included: boolean;
   };
+  if (sha256(blindPacketText) !== predictionManifest.input_sha256) {
+    throw new Error("Blind packet SHA-256 does not match the frozen prediction manifest input digest");
+  }
   if (sha256(predictionText) !== predictionManifest.prediction_sha256) {
     throw new Error("Frozen prediction SHA-256 does not match its manifest");
   }
@@ -85,11 +99,32 @@ async function main(): Promise<void> {
   for (const prediction of predictions) {
     if (!prediction.sample_id || predictionById.has(prediction.sample_id) ||
         !VALID_PAIRS.has(prediction.symbol) || !VALID_TIMEFRAMES.has(prediction.timeframe) ||
-        !VALID_SPLITS.has(prediction.split) || !Number.isSafeInteger(prediction.end_time) ||
+        !VALID_SPLITS.has(prediction.split) || !Number.isSafeInteger(prediction.start_time) ||
+        !Number.isSafeInteger(prediction.end_time) || prediction.start_time >= prediction.end_time ||
         (prediction.detector_output !== null && !VALID_PATTERNS.has(prediction.detector_output.pattern))) {
       throw new Error("Frozen predictions contain invalid or duplicate sample metadata");
     }
     predictionById.set(prediction.sample_id, prediction);
+  }
+  if (packets.length !== predictionById.size) {
+    throw new Error(`Blind packet count (${packets.length}) does not match frozen prediction count (${predictionById.size})`);
+  }
+  const packetById = new Map<string, PacketMetadata>();
+  for (const packet of packets) {
+    if (!packet.sample_id || packetById.has(packet.sample_id) ||
+        !VALID_PAIRS.has(packet.symbol) || !VALID_TIMEFRAMES.has(packet.timeframe) ||
+        !Number.isSafeInteger(packet.start_time) || !Number.isSafeInteger(packet.end_time) ||
+        packet.start_time >= packet.end_time) {
+      throw new Error("Blind packets contain invalid or duplicate sample metadata");
+    }
+    packetById.set(packet.sample_id, packet);
+  }
+  for (const prediction of predictions) {
+    const packet = packetById.get(prediction.sample_id);
+    if (!packet || packet.symbol !== prediction.symbol || packet.timeframe !== prediction.timeframe ||
+        packet.start_time !== prediction.start_time || packet.end_time !== prediction.end_time) {
+      throw new Error(`Frozen prediction metadata does not match blind packet: ${prediction.sample_id}`);
+    }
   }
 
   const labelText = await readFile(LABELS_FILE, "utf8");
