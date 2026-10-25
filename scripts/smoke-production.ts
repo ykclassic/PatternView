@@ -63,6 +63,8 @@ async function main() {
     throw new Error("Backend scan response contract failed.");
   }
   const scanResult = scan.body;
+  const scanPatterns = scanResult.patterns as unknown[];
+  const persistenceEnabled = scanResult.persisted as boolean;
   const proxied = await getJson(`${frontendOrigin}/api/analysis/scan`, {
     method: "POST", headers: { "content-type": "application/json" }, body: scanBody,
   });
@@ -70,8 +72,8 @@ async function main() {
   if (!isRecord(proxied.body) || !Array.isArray(proxied.body.patterns)) throw new Error("Frontend proxy response contract failed.");
   console.log(JSON.stringify({
     status: "passed", frontend: frontendOrigin, backend: apiOrigin,
-    closedCandles: candleRows.length, patterns: scanResult.patterns.length,
-    persistenceEnabledForScan: scanResult.persisted,
+    closedCandles: candleRows.length, patterns: scanPatterns.length,
+    persistenceEnabledForScan: persistenceEnabled,
   }, null, 2));
 }
 main().catch((error) => {
