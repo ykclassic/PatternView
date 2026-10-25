@@ -180,7 +180,7 @@ export default function Home() {
                 </div>
                 <div className="explanation"><h4>Why it was detected</h4><ul>{pattern.explanation.map((line, i) => <li key={i}>{line}</li>)}</ul></div>
                 {pattern.status !== "QUALIFIED" && <p className="conditional-note">No qualified entry yet. Levels are conditional analysis, not instructions to trade.</p>}
-                {scanPersistence !== null && <p className="conditional-note">{scanPersistence ? "Scan provenance saved to the backend database." : "Backend database is not configured; this scan is stored only in this browser."}</p>}
+                {scanPersistence !== null && <p className="conditional-note">{scanPersistence ? "Scan provenance saved to the backend database." : "Backend database is not configured; this scan is stored only in the current browser."}</p>}
               </div>
             ) : <div className="empty-state"><div className="empty-icon">⌁</div><h3>No qualifying formation</h3><p>No in-scope classical formation met the deterministic criteria in the available closed candles.</p><span className="neutral-pill">NO TRADE</span></div>}
           </div>
