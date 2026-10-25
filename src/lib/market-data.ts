@@ -186,7 +186,7 @@ export async function fetchPatternScan(
       takeProfit: typeof row.take_profit === "number" ? row.take_profit : null,
       explanation: Array.isArray(row.explanation) ? row.explanation.filter((line): line is string => typeof line === "string") : [],
       qualityScore: typeof row.quality_score === "number" ? row.quality_score : undefined,
-      ruleVersion: typeof row.rule_version === "string" ? row.rule_version : payload.rule_version,
+      ruleVersion: typeof row.rule_version === "string" ? row.rule_version : String(payload.rule_version),
       detectionTime: typeof row.detection_time === "number" ? row.detection_time : undefined,
     };
     if (![pattern.neckline, pattern.breakoutLevel, pattern.invalidation].every(Number.isFinite)) return [];
