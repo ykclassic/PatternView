@@ -1,8 +1,11 @@
 """PatternView read-only analysis API entry point."""
 from fastapi import FastAPI
+from fastapi.responses import JSONResponse
 
+from app.persistence import check_database
 from app.routes.candles import router as candles_router
 from app.routes.markets import router as markets_router
+from app.routes.scan import router as scan_router
 
 app = FastAPI(
     title="PatternView API",
@@ -13,6 +16,7 @@ app = FastAPI(
 )
 app.include_router(markets_router)
 app.include_router(candles_router)
+app.include_router(scan_router)
 
 
 @app.get("/health", tags=["operations"])
@@ -22,6 +26,15 @@ def health() -> dict[str, str]:
 
 
 @app.get("/ready", tags=["operations"])
-def readiness() -> dict[str, str]:
-    """Readiness probe. Dependency checks are added with the data layer."""
+def readiness():
+    """Readiness probe checks required configured persistence dependencies."""
+    try:
+        ready = check_database()
+    except Exception:
+        ready = False
+    if not ready:
+        return JSONResponse(
+            status_code=503,
+            content={"status": "not_ready", "service": "patternview-api"},
+        )
     return {"status": "ready", "service": "patternview-api", "version": app.version}
