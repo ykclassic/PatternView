@@ -1,6 +1,9 @@
 name: Historical Prediction Artifacts
 
 on:
+  push:
+    branches:
+      - evaluation/frozen-artifact-pair-run
   workflow_dispatch:
   workflow_call:
 
