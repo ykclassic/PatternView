@@ -7,7 +7,7 @@
 - BTC/USDT, ETH/USDT and SOL/USDT
 - 15m, 1h, 4h and 1d timeframes
 - Read-only candlestick data with Binance host failover and Kraken OHLC fallback
-- Deterministic double top, double bottom, triple top, triple bottom, head-and-shoulders and inverse head-and-shoulders detection
+- Deterministic backend pattern interpretation for double tops/bottoms, head-and-shoulders, triangles, flags and wedges; browser-side candlestick recognizers remain separate
 - Confirmed pivot markers, neckline and invalidation level overlays
 - Explainable criteria and conditional measured-move entry/stop/target proposals
 - Browser-local scan history with provider provenance and candle snapshots for reproducibility
@@ -15,14 +15,27 @@
 
 ## Run locally
 
-Requirements: Node.js 22+ and npm.
+Requirements: Node.js 22+, npm, and Python 3.12+.
+
+Start the API in one terminal:
+
+```bash
+cd backend
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+uvicorn app.main:app --reload --port 8000
+```
+
+In a second terminal, from the repository root:
 
 ```bash
 npm install
+cp .env.example .env.local
 npm run dev
 ```
 
-Open http://localhost:3000. The app reads public market data from Binance, then falls back to Kraken OHLC if all Binance hosts fail. Both providers are accessed server-side with bounded request timeouts and normalized candle validation. No credentials are needed.
+Open http://localhost:3000. The Next.js server proxies pattern scans to the FastAPI backend using the server-only `PATTERNVIEW_API_URL`. Public market candles use Binance host failover and Kraken OHLC fallback with bounded timeouts and normalized validation. No exchange credentials are needed.
 
 ## Quality checks
 
@@ -52,5 +65,6 @@ See [Phase 1 PRD](docs/PHASE1_PRD.md) and [acceptance evidence matrix](docs/PHAS
 
 - The detector returns the latest qualifying formation, not a ranked list of every simultaneous formation.
 - Scan history is stored in the current browser only and is capped at 20 records; it is not synced across devices.
-- Labeled historical evaluation, precision/recall measurement, viewport QA and exhaustive live production checks remain release acceptance gates.
+- Independent blind historical labels and validated precision/recall remain release gates. CI passing is not evidence of market accuracy.
+- Production pattern scans require a reachable FastAPI backend configured with `PATTERNVIEW_API_URL`; persistence is optional unless `DATABASE_REQUIRED=true` is set.
 - CoinGecko, CoinMarketCap and DefiLlama are not currently used as candle fallbacks because their general-purpose endpoints do not consistently provide the same exchange-pair OHLCV contract for every supported timeframe. Public market-data availability and rate limits depend on the upstream provider.
