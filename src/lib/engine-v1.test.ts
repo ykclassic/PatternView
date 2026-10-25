@@ -112,8 +112,8 @@ function structuredBottomCandles(): Candle[] {
 }
 
 function triangleFixture(
-  highPeaks: number[],
-  lowTroughs: number[],
+  highPeaks: readonly number[],
+  lowTroughs: readonly number[],
 ): Candle[] {
   const length = 48;
   const peakIndices = [5, 15, 25, 35];
