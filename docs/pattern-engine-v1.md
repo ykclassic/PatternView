@@ -12,6 +12,7 @@ This first deterministic engine version provides configurable, causal pivot dete
 ## Pivot confirmation
 - A pivot candidate must be an extreme relative to the configured number of candles on its left and the available candles on its right.
 - A pivot is confirmed only when the full configured right-hand window exists.
+- A detected pattern is emitted only while its formation remains within `maxFormationBars` of the current as-of candle; stale structures expire.
 - `time` is the pivot candle time; `confirmedAtTime` is the time when confirmation became observable.
 - Unconfirmed tail candidates are marked `confirmed: false` and are never used for pattern detections.
 - This avoids backdating a confirmed pattern to a time before its right-side confirmation candles closed.
@@ -47,7 +48,7 @@ Last confirmed swing lows form a near-horizontal lower boundary while swing high
 ### Symmetrical triangle
 Confirmed swing highs decline while confirmed swing lows rise. Direction remains neutral until a close breaks a boundary.
 
-Triangle boundary fitting is a first-pass endpoint/slope approximation. It requires independent validation before production acceptance.
+Triangle boundary fitting is a first-pass linear fit from the first and last of the selected confirmed swing pivots, projected to the latest supplied candle. Breakout checks use these projected boundaries rather than the average of the pivot prices. It remains an approximation and requires independent validation before production acceptance.
 
 ## Quality score
 The output's `qualityScore` is a deterministic 0–100 heuristic composed of measurable structural features. It is explicitly marked `isProbability: false`. It must not be described as a confidence probability until calibration and out-of-sample validation demonstrate that interpretation.
