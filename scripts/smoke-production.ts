@@ -1,11 +1,18 @@
 import assert from "node:assert/strict";
-
 interface CandleTime { time: number }
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 function isCandleTime(value: unknown): value is CandleTime {
   return isRecord(value) && typeof value.time === "number" && Number.isFinite(value.time) && value.time > 0;
+}
+function strictlyIncreasing(rows: unknown[]): boolean {
+  let previous = 0;
+  for (const row of rows) {
+    if (!isCandleTime(row) || row.time <= previous) return false;
+    previous = row.time;
+  }
+  return true;
 }
 const frontend = process.env.FRONTEND_URL;
 const api = process.env.PATTERNVIEW_API_URL;
@@ -33,38 +40,38 @@ async function main() {
   assert.equal(home.status, 200, `Frontend home expected 200, got ${home.status}`);
   const health = await getJson(`${apiOrigin}/health`);
   assert.equal(health.response.status, 200);
-  assert(isRecord(health.body) && health.body.status === "ok");
+  if (!isRecord(health.body) || health.body.status !== "ok") throw new Error("Backend liveness contract failed.");
   const ready = await getJson(`${apiOrigin}/ready`);
   assert.equal(ready.response.status, 200, `API readiness returned HTTP ${ready.response.status}`);
   const markets = await getJson(`${apiOrigin}/api/v1/markets`);
   assert.equal(markets.response.status, 200);
-  assert(isRecord(markets.body));
-  assert(Array.isArray(markets.body.symbols) && markets.body.symbols.includes("BTCUSDT"));
-  assert(Array.isArray(markets.body.timeframes) && markets.body.timeframes.includes("1h"));
+  if (!isRecord(markets.body) || !Array.isArray(markets.body.symbols) ||
+      !markets.body.symbols.includes("BTCUSDT") || !Array.isArray(markets.body.timeframes) ||
+      !markets.body.timeframes.includes("1h")) throw new Error("Market catalog contract failed.");
   const candles = await getJson(`${apiOrigin}/api/v1/candles?symbol=BTCUSDT&timeframe=1h&limit=60`);
   assert.equal(candles.response.status, 200, "Normalized closed-candle endpoint failed");
-  assert(isRecord(candles.body) && Array.isArray(candles.body.candles));
+  if (!isRecord(candles.body) || !Array.isArray(candles.body.candles)) throw new Error("Candle response shape failed.");
   const candleRows: unknown[] = candles.body.candles;
   assert(candleRows.length >= 40, "Expected at least 40 closed candles");
-  assert(candleRows.every((candle, index, all) => isCandleTime(candle) &&
-    (index === 0 || (isCandleTime(all[index - 1]) && candle.time > all[index - 1].time))),
-  "Candle timestamps are not strictly increasing");
+  assert(strictlyIncreasing(candleRows), "Candle timestamps are not strictly increasing");
   const scanBody = JSON.stringify({ symbol: "BTCUSDT", timeframe: "1h", limit: 60 });
   const scan = await getJson(`${apiOrigin}/api/v1/scan`, {
     method: "POST", headers: { "content-type": "application/json" }, body: scanBody,
   });
   assert.equal(scan.response.status, 200, "Backend scan endpoint failed");
-  assert(isRecord(scan.body) && Array.isArray(scan.body.patterns));
-  assert.equal(typeof scan.body.persisted, "boolean");
+  if (!isRecord(scan.body) || !Array.isArray(scan.body.patterns) || typeof scan.body.persisted !== "boolean") {
+    throw new Error("Backend scan response contract failed.");
+  }
+  const scanResult = scan.body;
   const proxied = await getJson(`${frontendOrigin}/api/analysis/scan`, {
     method: "POST", headers: { "content-type": "application/json" }, body: scanBody,
   });
   assert.equal(proxied.response.status, 200, "Frontend-to-backend scan proxy failed");
-  assert(isRecord(proxied.body) && Array.isArray(proxied.body.patterns));
+  if (!isRecord(proxied.body) || !Array.isArray(proxied.body.patterns)) throw new Error("Frontend proxy response contract failed.");
   console.log(JSON.stringify({
     status: "passed", frontend: frontendOrigin, backend: apiOrigin,
-    closedCandles: candleRows.length, patterns: scan.body.patterns.length,
-    persistenceEnabledForScan: scan.body.persisted,
+    closedCandles: candleRows.length, patterns: scanResult.patterns.length,
+    persistenceEnabledForScan: scanResult.persisted,
   }, null, 2));
 }
 main().catch((error) => {
