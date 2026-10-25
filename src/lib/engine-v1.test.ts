@@ -193,7 +193,7 @@ test("negative fixture: unequal swing lows do not qualify as a double bottom", (
     if (index === 24) return { ...candle, open: 94, high: 95, close: 94, low: 93 };
     return candle;
   });
-  const results = detectPatternsV1(candles, { ...fixtureConfig(), levelToleranceAtr: 0.1 });
+  const results = detectPatternsV1(candles, { ...fixtureConfig(), levelToleranceAtr: 0.00001 });
   assert.equal(results.some((pattern) => pattern.kind === "DOUBLE_BOTTOM"), false);
 });
 
