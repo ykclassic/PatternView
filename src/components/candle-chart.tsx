@@ -13,6 +13,11 @@ import {
 } from "lightweight-charts";
 import type { Candle, DetectedPattern } from "@/lib/types";
 
+const BEARISH_STRUCTURES = new Set([
+  "DOUBLE_TOP", "TRIPLE_TOP", "HEAD_AND_SHOULDERS",
+  "DESCENDING_TRIANGLE", "BEAR_FLAG", "RISING_WEDGE",
+]);
+
 interface Props {
   candles: Candle[];
   pattern: DetectedPattern | null;
@@ -94,7 +99,7 @@ export default function CandleChart({ candles, pattern }: Props) {
           title: "Invalidation",
         }),
       ];
-      const bearish = ["DOUBLE_TOP", "TRIPLE_TOP", "HEAD_AND_SHOULDERS"].includes(pattern.kind);
+      const bearish = BEARISH_STRUCTURES.has(pattern.kind);
       const pivotTimes = [pattern.firstPivotTime, pattern.secondPivotTime, pattern.thirdPivotTime]
         .filter((time): time is number => typeof time === "number");
       markers.setMarkers(pivotTimes.map((time, index) => ({
