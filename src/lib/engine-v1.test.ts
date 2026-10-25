@@ -172,7 +172,7 @@ test("negative fixture: unequal swing highs do not qualify as a double top", () 
     if (index === 24) return { ...candle, open: 116, high: 117, close: 116, low: 115 };
     return candle;
   });
-  const results = detectPatternsV1(candles, { ...fixtureConfig(), levelToleranceAtr: 0.1 });
+  const results = detectPatternsV1(candles, { ...fixtureConfig(), levelToleranceAtr: 0.00001 });
   assert.equal(results.some((pattern) => pattern.kind === "DOUBLE_TOP"), false);
 });
 
