@@ -102,7 +102,8 @@ test("rejects blind packet bytes that do not match the frozen input digest", asy
   const f = await fixture();
   try {
     await generateTemplate(f);
-    await writeFile(join(f.data, "blind-packets.jsonl"), "{}\\n", "utf8");
+    const packetText = await readFile(join(f.data, "blind-packets.jsonl"), "utf8");
+    await writeFile(join(f.data, "blind-packets.jsonl"), `${packetText}\\n`, "utf8");
     const result = run(evaluationScript, f.root);
     assert.notEqual(result.status, 0);
     assert.match(result.stderr, /Blind packet SHA-256 does not match/);
