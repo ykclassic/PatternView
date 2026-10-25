@@ -303,6 +303,8 @@ function makeTriangle(
     Math.min(20, formationPivots.length * 5) +
     Math.min(20, span / config.maxFormationBars * 20),
   )));
+  // Apply the configured quality floor consistently to every pattern family.
+  if (score < config.minQualityScore) return null;
   const allPivots = [...highs, ...lows].sort((a, b) => a.index - b.index);
   return {
     algorithmVersion: config.version,
