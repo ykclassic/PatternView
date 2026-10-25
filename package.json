@@ -12,7 +12,8 @@
     "dataset:prepare": "tsx scripts/prepare-historical-dataset.ts",
     "predictions:freeze": "tsx scripts/generate-historical-predictions.ts",
     "labels:template": "tsx scripts/create-label-template.ts",
-    "evaluation:run": "tsx scripts/evaluate-historical-predictions.ts"
+    "evaluation:run": "tsx scripts/evaluate-historical-predictions.ts",
+    "smoke:production": "tsx scripts/smoke-production.ts"
   },
   "dependencies": {
     "lightweight-charts": "^5.0.8",
