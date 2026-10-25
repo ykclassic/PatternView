@@ -195,7 +195,10 @@ function makeDoublePattern(
   config: EngineConfig,
 ): PatternDetectionV1 | null {
   const separation = second.index - first.index;
-  if (separation < config.minPivotSeparation || separation > config.maxFormationBars) return null;
+  const formationAge = candles.length - 1 - first.index;
+  if (separation < config.minPivotSeparation ||
+      separation > config.maxFormationBars ||
+      formationAge > config.maxFormationBars) return null;
   const atr = Math.max((first.atrAtPivot + second.atrAtPivot) / 2, Number.EPSILON);
   const prominence = kind === "DOUBLE_TOP"
     ? Math.min(first.price, second.price) - reaction.price
@@ -261,8 +264,13 @@ function makeTriangle(
   const upperSlope = slope(highs);
   const lowerSlope = slope(lows);
   const formationPivots = [highs[0], highs[highs.length - 1], lows[0], lows[lows.length - 1]];
-  const span = Math.max(...formationPivots.map((pivot) => pivot.index)) - Math.min(...formationPivots.map((pivot) => pivot.index));
-  if (span > config.maxFormationBars || span < config.minPivotSeparation) return null;
+  const firstFormationIndex = Math.min(...formationPivots.map((pivot) => pivot.index));
+  const lastFormationIndex = Math.max(...formationPivots.map((pivot) => pivot.index));
+  const span = lastFormationIndex - firstFormationIndex;
+  const formationAge = candles.length - 1 - firstFormationIndex;
+  if (span > config.maxFormationBars ||
+      span < config.minPivotSeparation ||
+      formationAge > config.maxFormationBars) return null;
   const atr = Math.max(...formationPivots.map((pivot) => pivot.atrAtPivot), Number.EPSILON);
   const upperChangeAtr = upperSlope * span / atr;
   const lowerChangeAtr = lowerSlope * span / atr;
@@ -277,8 +285,13 @@ function makeTriangle(
   else if (upperFalling && lowerRising) { kind = "SYMMETRICAL_TRIANGLE"; bias = "NEUTRAL"; }
   if (!kind) return null;
 
-  const upper = (highs[0].price + highs[highs.length - 1].price) / 2;
-  const lower = (lows[0].price + lows[lows.length - 1].price) / 2;
+  // Project each fitted boundary to the latest supplied candle. Averaging pivot
+  // prices gives a horizontal midpoint, not the actual sloped triangle edge,
+  // and can label a breakout that never crossed the fitted boundary.
+  const upperLast = highs[highs.length - 1];
+  const lowerLast = lows[lows.length - 1];
+  const upper = upperLast.price + upperSlope * (candles.length - 1 - upperLast.index);
+  const lower = lowerLast.price + lowerSlope * (candles.length - 1 - lowerLast.index);
   if (upper <= lower) return null;
   const lastClose = candles[candles.length - 1].close;
   const breakout = lastClose > upper ? "UP" : lastClose < lower ? "DOWN" : null;
