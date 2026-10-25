@@ -19,16 +19,19 @@ async function fixture() {
   const data = join(root, "datasets", "historical-v1");
   await mkdir(data, { recursive: true });
   const predictions = [
-    { sample_id: "train-1", symbol: "BTCUSDT", timeframe: "1h", end_time: 1_700_000_000, split: "train", detector_output: { pattern: "DOUBLE_TOP" } },
-    { sample_id: "validation-1", symbol: "BTCUSDT", timeframe: "1h", end_time: 1_700_003_600, split: "validation", detector_output: null },
-    { sample_id: "test-1", symbol: "BTCUSDT", timeframe: "1h", end_time: 1_700_007_200, split: "test", detector_output: { pattern: "DOUBLE_BOTTOM" } },
+    { sample_id: "train-1", symbol: "BTCUSDT", timeframe: "1h", start_time: 1_699_996_400, end_time: 1_700_000_000, split: "train", detector_output: { pattern: "DOUBLE_TOP" } },
+    { sample_id: "validation-1", symbol: "BTCUSDT", timeframe: "1h", start_time: 1_700_000_000, end_time: 1_700_003_600, split: "validation", detector_output: null },
+    { sample_id: "test-1", symbol: "BTCUSDT", timeframe: "1h", start_time: 1_700_003_600, end_time: 1_700_007_200, split: "test", detector_output: { pattern: "DOUBLE_BOTTOM" } },
   ];
   const predictionText = predictions.map((row) => JSON.stringify(row)).join("\n") + "\n";
+  const blindPacketsText = predictions.map(({ sample_id, symbol, timeframe, start_time, end_time }) =>
+    JSON.stringify({ sample_id, symbol, timeframe, start_time, end_time, candles: [] })).join("\n") + "\n";
+  await writeFile(join(data, "blind-packets.jsonl"), blindPacketsText, "utf8");
   await writeFile(join(data, "predictions-v1.jsonl"), predictionText, "utf8");
   await writeFile(join(data, "prediction-manifest-v1.json"), JSON.stringify({
     rule_version: "pattern-detector-test-v1",
     prediction_sha256: digest(predictionText),
-    input_sha256: "a".repeat(64),
+    input_sha256: digest(blindPacketsText),
     packet_count: predictions.length,
     labels_included: false,
     performance_metrics_included: false,
@@ -89,6 +92,21 @@ test("scores only reviewed labels and requires independent adjudication for test
     const doubleBottom = testReport.metrics.perPattern.find((row: { pattern: string }) => row.pattern === "DOUBLE_BOTTOM");
     assert.equal(doubleBottom.truePositive, 1);
     assert.equal(doubleBottom.precision, 1);
+  } finally {
+    await rm(f.root, { recursive: true, force: true });
+  }
+});
+
+
+test("rejects blind packet bytes that do not match the frozen input digest", async () => {
+  const f = await fixture();
+  try {
+    await generateTemplate(f);
+    const packetText = await readFile(join(f.data, "blind-packets.jsonl"), "utf8");
+    await writeFile(join(f.data, "blind-packets.jsonl"), packetText.replace('"candles":[]', '"candles": []'), "utf8");
+    const result = run(evaluationScript, f.root);
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /Blind packet SHA-256 does not match/);
   } finally {
     await rm(f.root, { recursive: true, force: true });
   }
