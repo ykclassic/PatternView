@@ -81,3 +81,108 @@ test("rejects invalid candles and invalid config", () => {
 test("does not emit a pattern when there is insufficient data", () => {
   assert.deepEqual(detectPatternsV1(candlesFrom([10, 11, 10])), []);
 });
+
+
+function fixtureConfig() {
+  return {
+    ...DEFAULT_ENGINE_CONFIG,
+    leftBars: 1,
+    rightBars: 1,
+    atrPeriod: 3,
+    minPivotSeparation: 3,
+    maxFormationBars: 60,
+    levelToleranceAtr: 1.5,
+    minProminenceAtr: 1.5,
+    horizontalBoundaryAtr: 0.2,
+    minQualityScore: 0,
+  };
+}
+
+function structuredBottomCandles(): Candle[] {
+  const values = Array.from({ length: 55 }, () => 105);
+  for (const [index, value] of [[8, 100], [16, 110], [24, 100.2], [32, 110], [40, 105]] as Array<[number, number]>) values[index] = value;
+  return values.map((close, index) => ({
+    time: 1_710_000_000 + index * 3600,
+    open: close,
+    high: close + (index === 16 || index === 32 ? 0 : 1),
+    low: close - (index === 8 || index === 24 ? 0 : 1),
+    close,
+    volume: 100,
+  }));
+}
+
+function triangleFixture(
+  highPeaks: number[],
+  lowTroughs: number[],
+): Candle[] {
+  const length = 48;
+  const peakIndices = [5, 15, 25, 35];
+  const troughIndices = [10, 20, 30, 40];
+  return Array.from({ length }, (_, index) => {
+    let high = 22;
+    let low = 20;
+    const peak = peakIndices.indexOf(index);
+    const trough = troughIndices.indexOf(index);
+    if (peak >= 0) high = highPeaks[peak];
+    if (trough >= 0) low = lowTroughs[trough];
+    const close = (high + low) / 2;
+    return {
+      time: 1_720_000_000 + index * 3600,
+      open: close,
+      high,
+      low,
+      close,
+      volume: 100,
+    };
+  });
+}
+
+test("positive fixture: double bottom is detected with confirmed pivots", () => {
+  const results = detectPatternsV1(structuredBottomCandles(), fixtureConfig());
+  const bottom = results.find((pattern) => pattern.kind === "DOUBLE_BOTTOM");
+  assert.ok(bottom, "expected a double-bottom detection");
+  assert.ok(bottom.pivots.every((pivot) => pivot.confirmed));
+  assert.equal(bottom.isProbability, false);
+  assert.ok(bottom.explanation.some((item) => item.code === "STRUCTURAL_PROMINENCE"));
+});
+
+test("positive fixtures: each triangle subtype is classified from confirmed swing structure", () => {
+  const cases = [
+    { kind: "ASCENDING_TRIANGLE", highs: [26, 26, 26, 26], lows: [10, 12, 14, 16] },
+    { kind: "DESCENDING_TRIANGLE", highs: [30, 28, 26, 24], lows: [10, 10, 10, 10] },
+    { kind: "SYMMETRICAL_TRIANGLE", highs: [30, 28, 26, 24], lows: [10, 12, 14, 16] },
+  ] as const;
+  for (const item of cases) {
+    const results = detectPatternsV1(triangleFixture(item.highs, item.lows), fixtureConfig());
+    assert.ok(
+      results.some((pattern) => pattern.kind === item.kind),
+      `expected ${item.kind}; got ${results.map((pattern) => pattern.kind).join(", ")}`,
+    );
+  }
+});
+
+test("negative fixtures: monotonic price action emits none of the five foundational patterns", () => {
+  const candles = candlesFrom(Array.from({ length: 80 }, (_, index) => 100 + index * 0.2));
+  const results = detectPatternsV1(candles, fixtureConfig());
+  assert.deepEqual(results, []);
+});
+
+test("negative fixture: unequal swing highs do not qualify as a double top", () => {
+  const candles = structuredCandles().map((candle, index) => {
+    if (index === 24) return { ...candle, open: 116, high: 117, close: 116, low: 115 };
+    return candle;
+  });
+  const results = detectPatternsV1(candles, { ...fixtureConfig(), levelToleranceAtr: 0.1 });
+  assert.equal(results.some((pattern) => pattern.kind === "DOUBLE_TOP"), false);
+});
+
+test("stale double-top formations expire instead of persisting indefinitely", () => {
+  const candles = structuredCandles();
+  const extension = candlesFrom(Array.from({ length: 120 }, (_, index) => 106 + index * 0.01))
+    .map((candle, index) => ({ ...candle, time: candles[candles.length - 1].time + (index + 1) * 3600 }));
+  const results = detectPatternsV1([...candles, ...extension], {
+    ...fixtureConfig(),
+    maxFormationBars: 50,
+  });
+  assert.equal(results.some((pattern) => pattern.kind === "DOUBLE_TOP"), false);
+});
