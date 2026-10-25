@@ -38,6 +38,7 @@ class PatternResult:
     quality_score: int
     first_pivot_time: int
     last_pivot_time: int
+    pivot_times: list[int]
     detection_time: int
     neckline: float
     breakout_level: float
@@ -119,6 +120,7 @@ def _make_result(
         quality_score=max(0, min(100, quality)),
         first_pivot_time=pivots[0].time,
         last_pivot_time=pivots[-1].time,
+        pivot_times=[point.time for point in sorted(pivots, key=lambda point: point.index)],
         detection_time=last.time,
         neckline=neckline,
         breakout_level=neckline,

@@ -53,6 +53,9 @@ export interface DetectedPattern {
   stopLoss: number | null;
   takeProfit: number | null;
   explanation: string[];
+  qualityScore?: number;
+  ruleVersion?: string;
+  detectionTime?: number;
 }
 
 export interface ScanHistoryRecord {

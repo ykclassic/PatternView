@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import CandleChart from "@/components/candle-chart";
 import { fetchMarketSnapshot } from "@/lib/market-data";
 import { appendScanHistory, makeScanId, readScanHistory } from "@/lib/scan-history";
-import { fetchAnalysisPattern } from "@/lib/analysis-api";
+import { fetchAnalysisScan } from "@/lib/analysis-api";
 import type { Candle, DetectedPattern, PatternKind, ScanHistoryRecord, SymbolPair, Timeframe } from "@/lib/types";
 
 const PAIRS: { value: SymbolPair; label: string }[] = [
@@ -53,6 +53,7 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
   const [history, setHistory] = useState<ScanHistoryRecord[]>([]);
+  const [scanPersistence, setScanPersistence] = useState<boolean | null>(null);
 
   useEffect(() => { setHistory(readScanHistory()); }, []);
 
@@ -63,24 +64,26 @@ export default function Home() {
       const snapshot = await fetchMarketSnapshot(symbol, timeframe, signal);
       const result = snapshot.candles;
       if (result.length < 40) throw new Error("Not enough closed candles for a meaningful pattern scan.");
-      const detected = await fetchAnalysisPattern(symbol, timeframe, signal);
+      const analysis = await fetchAnalysisScan(symbol, timeframe, signal);
+      const detected = analysis.pattern;
       const scannedAt = new Date().toISOString();
       const record: ScanHistoryRecord = {
-        id: makeScanId(symbol, timeframe, scannedAt),
+        id: analysis.scanId || makeScanId(symbol, timeframe, scannedAt),
         symbol,
         timeframe,
         scannedAt,
-        provider: snapshot.provider,
+        provider: analysis.provider || snapshot.provider,
         candleCount: result.length,
         firstCandleTime: result[0].time,
         lastCandleTime: result[result.length - 1].time,
-        ruleVersion: "patternview-engine-v1.1",
+        ruleVersion: analysis.ruleVersion,
         result: detected,
         candleSnapshot: result,
       };
       setHistory(appendScanHistory(record));
       setCandles(result);
       setPattern(detected);
+      setScanPersistence(analysis.persisted);
       setLastUpdated(new Date().toLocaleTimeString());
     } catch (cause) {
       if (cause instanceof DOMException && cause.name === "AbortError") return;
@@ -88,6 +91,7 @@ export default function Home() {
       setError(message);
       setCandles([]);
       setPattern(null);
+      setScanPersistence(null);
       const scannedAt = new Date().toISOString();
       const record: ScanHistoryRecord = {
         id: makeScanId(symbol, timeframe, scannedAt),
@@ -162,6 +166,7 @@ export default function Home() {
               <div className="pattern-content">
                 <div className="pattern-title-row"><div className="pattern-icon">{BEARISH_PATTERNS.includes(pattern.kind) ? "⌃⌃" : "⌄⌄"}</div><div><h3>{PATTERN_NAMES[pattern.kind]}</h3><p>{BEARISH_PATTERNS.includes(pattern.kind) ? "Potential bearish reversal" : "Potential bullish reversal"}</p></div></div>
                 <div className={`status-pill status-${pattern.status.toLowerCase().replaceAll(" ", "-")}`}><span />{pattern.status}</div>
+                {pattern.qualityScore != null && <div className="quality-score"><span>Heuristic quality score</span><strong>{pattern.qualityScore}/100</strong><small>Not a probability</small></div>}
                 <div className="level-list">
                   <div><span>Neckline / breakout</span><strong>{money(pattern.neckline)} <small>USDT</small></strong></div>
                   <div><span>Invalidation level</span><strong>{money(pattern.invalidation)} <small>USDT</small></strong></div>
@@ -171,6 +176,7 @@ export default function Home() {
                 </div>
                 <div className="explanation"><h4>Why it was detected</h4><ul>{pattern.explanation.map((line, i) => <li key={i}>{line}</li>)}</ul></div>
                 {pattern.status !== "QUALIFIED" && <p className="conditional-note">No qualified entry yet. Levels are conditional analysis, not instructions to trade.</p>}
+                <p className="conditional-note">Rule version: {pattern.ruleVersion ?? "patternview-engine-v1.1"}. {scanPersistence === true ? "Scan saved to the backend database." : scanPersistence === false ? "Backend persistence is not configured; scan history is local to this browser." : ""}</p>
               </div>
             ) : <div className="empty-state"><div className="empty-icon">⌁</div><h3>No qualifying formation</h3><p>No in-scope classical formation met the deterministic criteria in the available closed candles.</p><span className="neutral-pill">NO TRADE</span></div>}
           </div>
