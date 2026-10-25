@@ -186,3 +186,42 @@ test("stale double-top formations expire instead of persisting indefinitely", ()
   });
   assert.equal(results.some((pattern) => pattern.kind === "DOUBLE_TOP"), false);
 });
+
+
+test("negative fixture: unequal swing lows do not qualify as a double bottom", () => {
+  const candles = structuredBottomCandles().map((candle, index) => {
+    if (index === 24) return { ...candle, open: 94, high: 95, close: 94, low: 93 };
+    return candle;
+  });
+  const results = detectPatternsV1(candles, { ...fixtureConfig(), levelToleranceAtr: 0.1 });
+  assert.equal(results.some((pattern) => pattern.kind === "DOUBLE_BOTTOM"), false);
+});
+
+test("negative fixtures: non-converging triangle lookalikes are rejected", () => {
+  const cases = [
+    { name: "flat upper and flat lower", highs: [26, 26, 26, 26], lows: [10, 10, 10, 10] },
+    { name: "both boundaries falling", highs: [30, 28, 26, 24], lows: [16, 14, 12, 10] },
+    { name: "both boundaries rising", highs: [24, 26, 28, 30], lows: [10, 12, 14, 16] },
+  ];
+  for (const item of cases) {
+    const results = detectPatternsV1(triangleFixture(item.highs, item.lows), fixtureConfig());
+    assert.equal(
+      results.some((pattern) => pattern.kind.endsWith("TRIANGLE")),
+      false,
+      `unexpected triangle for ${item.name}: ${results.map((pattern) => pattern.kind).join(", ")}`,
+    );
+  }
+});
+
+test("all reported pivots were observable by the pattern detection time", () => {
+  const candles = structuredCandles();
+  const results = detectPatternsV1(candles, fixtureConfig());
+  for (const pattern of results) {
+    assert.equal(pattern.detectedAtTime, candles[candles.length - 1].time);
+    for (const pivot of pattern.pivots) {
+      assert.equal(pivot.confirmed, true);
+      assert.ok(pivot.confirmedAtTime !== null);
+      assert.ok(pivot.confirmedAtTime! <= pattern.detectedAtTime);
+    }
+  }
+});
