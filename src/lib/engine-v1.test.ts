@@ -225,3 +225,10 @@ test("all reported pivots were observable by the pattern detection time", () => 
     }
   }
 });
+
+
+test("triangle detections respect the configured quality-score floor", () => {
+  const candles = triangleFixture([26, 26, 26, 26], [10, 12, 14, 16]);
+  const results = detectPatternsV1(candles, { ...fixtureConfig(), minQualityScore: 100 });
+  assert.equal(results.some((pattern) => pattern.kind.endsWith("TRIANGLE")), false);
+});
