@@ -36,6 +36,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          ready=0
           for attempt in $(seq 1 24); do
             frontend_ok=0
             backend_ok=0
@@ -44,13 +45,29 @@ jobs:
                curl --silent --show-error --fail --max-time 20 "$PATTERNVIEW_API_URL/ready" >/dev/null; then backend_ok=1; fi
             if [ "$frontend_ok" -eq 1 ] && [ "$backend_ok" -eq 1 ]; then
               echo "Frontend and API liveness/readiness are responding."
-              exit 0
+              ready=1
+              break
             fi
             echo "Deployment not ready (attempt $attempt/24); retrying in 15 seconds."
             sleep 15
           done
-          echo "Timed out waiting for deployed frontend and API readiness." >&2
-          exit 1
+          if [ "$ready" -ne 1 ]; then
+            echo "Timed out waiting for deployed frontend and API readiness." >&2
+            exit 1
+          fi
+
+      # Render and Vercel deploy asynchronously after a main-branch push.
+      # The stabilization window prevents smoke checks from hitting the
+      # previous backend while a new Render deployment is still building.
+      - name: Allow production deployments to settle
+        run: sleep 90
+
+      - name: Recheck production readiness
+        run: |
+          set -euo pipefail
+          curl --silent --show-error --fail --max-time 20 "$FRONTEND_URL" >/dev/null
+          curl --silent --show-error --fail --max-time 20 "$PATTERNVIEW_API_URL/health" >/dev/null
+          curl --silent --show-error --fail --max-time 20 "$PATTERNVIEW_API_URL/ready" >/dev/null
 
       - name: Run integrated production smoke
         run: npm run smoke:production
