@@ -131,7 +131,9 @@ function atrAt(ranges: number[], index: number, period: number): number {
 /**
  * Causal pivot detection. A pivot at index i is only confirmed when rightBars
  * subsequent candles are present. confirmedAtTime is the time the confirmation
- * became knowable, not the earlier pivot candle time.
+ * became knowable, not the earlier pivot candle time. Input candle.time must
+ * represent the candle close/availability timestamp; provider open timestamps
+ * must be normalized by the caller before invoking this engine.
  */
 export function detectPivots(
   candles: Candle[],
