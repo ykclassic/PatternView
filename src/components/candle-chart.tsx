@@ -18,6 +18,11 @@ interface Props {
   pattern: DetectedPattern | null;
 }
 
+const BEARISH_STRUCTURES = new Set([
+  "DOUBLE_TOP", "TRIPLE_TOP", "HEAD_AND_SHOULDERS",
+  "DESCENDING_TRIANGLE", "BEAR_FLAG", "RISING_WEDGE",
+]);
+
 export default function CandleChart({ candles, pattern }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
@@ -83,7 +88,7 @@ export default function CandleChart({ candles, pattern }: Props) {
           lineWidth: 2,
           lineStyle: 2,
           axisLabelVisible: true,
-          title: "Neckline",
+          title: "Neckline / breakout",
         }),
         series.createPriceLine({
           price: pattern.invalidation,
@@ -94,9 +99,9 @@ export default function CandleChart({ candles, pattern }: Props) {
           title: "Invalidation",
         }),
       ];
-      const bearish = ["DOUBLE_TOP", "TRIPLE_TOP", "HEAD_AND_SHOULDERS"].includes(pattern.kind);
+      const bearish = BEARISH_STRUCTURES.has(pattern.kind);
       const pivotTimes = [pattern.firstPivotTime, pattern.secondPivotTime, pattern.thirdPivotTime]
-        .filter((time): time is number => typeof time === "number");
+        .filter((time): time is number => typeof time === "number" && time > 0);
       markers.setMarkers(pivotTimes.map((time, index) => ({
         time: time as Time,
         position: bearish ? "aboveBar" : "belowBar",

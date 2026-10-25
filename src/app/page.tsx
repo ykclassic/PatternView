@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import CandleChart from "@/components/candle-chart";
-import { fetchMarketSnapshot } from "@/lib/market-data";
+import { fetchMarketSnapshot, fetchPatternScan } from "@/lib/market-data";
 import { appendScanHistory, makeScanId, readScanHistory } from "@/lib/scan-history";
 import { detectLatestPattern } from "@/lib/patterns";
 import type { Candle, DetectedPattern, PatternKind, ScanHistoryRecord, SymbolPair, Timeframe } from "@/lib/types";
@@ -20,6 +20,13 @@ const PATTERN_NAMES: Record<PatternKind, string> = {
   TRIPLE_BOTTOM: "Triple bottom",
   HEAD_AND_SHOULDERS: "Head and shoulders",
   INVERSE_HEAD_AND_SHOULDERS: "Inverse head and shoulders",
+  ASCENDING_TRIANGLE: "Ascending triangle",
+  DESCENDING_TRIANGLE: "Descending triangle",
+  SYMMETRICAL_TRIANGLE: "Symmetrical triangle",
+  BULL_FLAG: "Bull flag",
+  BEAR_FLAG: "Bear flag",
+  RISING_WEDGE: "Rising wedge",
+  FALLING_WEDGE: "Falling wedge",
   DOJI: "Doji",
   HAMMER: "Hammer",
   SHOOTING_STAR: "Shooting star",
@@ -30,7 +37,11 @@ const PATTERN_NAMES: Record<PatternKind, string> = {
   THREE_WHITE_SOLDIERS: "Three white soldiers",
   THREE_BLACK_CROWS: "Three black crows",
 };
-const BEARISH_PATTERNS: PatternKind[] = ["DOUBLE_TOP", "TRIPLE_TOP", "HEAD_AND_SHOULDERS", "SHOOTING_STAR", "BEARISH_ENGULFING", "EVENING_STAR", "THREE_BLACK_CROWS"];
+const BEARISH_PATTERNS: PatternKind[] = [
+  "DOUBLE_TOP", "TRIPLE_TOP", "HEAD_AND_SHOULDERS", "DESCENDING_TRIANGLE",
+  "BEAR_FLAG", "RISING_WEDGE", "SHOOTING_STAR", "BEARISH_ENGULFING",
+  "EVENING_STAR", "THREE_BLACK_CROWS",
+];
 
 function money(value: number | null | undefined) {
   if (value == null || !Number.isFinite(value)) return "—";
@@ -46,6 +57,7 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
   const [history, setHistory] = useState<ScanHistoryRecord[]>([]);
+  const [scanPersistence, setScanPersistence] = useState<boolean | null>(null);
 
   useEffect(() => { setHistory(readScanHistory()); }, []);
 
@@ -56,10 +68,11 @@ export default function Home() {
       const snapshot = await fetchMarketSnapshot(symbol, timeframe, signal);
       const result = snapshot.candles;
       if (result.length < 40) throw new Error("Not enough closed candles for a meaningful pattern scan.");
-      const detected = detectLatestPattern(result);
+      const backendScan = await fetchPatternScan(symbol, timeframe, signal);
+      const detected = backendScan ? backendScan.patterns[0] ?? null : detectLatestPattern(result);
       const scannedAt = new Date().toISOString();
       const record: ScanHistoryRecord = {
-        id: makeScanId(symbol, timeframe, scannedAt),
+        id: backendScan?.scanId ?? makeScanId(symbol, timeframe, scannedAt),
         symbol,
         timeframe,
         scannedAt,
@@ -67,13 +80,14 @@ export default function Home() {
         candleCount: result.length,
         firstCandleTime: result[0].time,
         lastCandleTime: result[result.length - 1].time,
-        ruleVersion: "phase1-patterns-v1",
+        ruleVersion: backendScan?.ruleVersion ?? "phase1-patterns-v1",
         result: detected,
         candleSnapshot: result,
       };
       setHistory(appendScanHistory(record));
       setCandles(result);
       setPattern(detected);
+      setScanPersistence(backendScan ? backendScan.persisted : null);
       setLastUpdated(new Date().toLocaleTimeString());
     } catch (cause) {
       if (cause instanceof DOMException && cause.name === "AbortError") return;
@@ -81,6 +95,7 @@ export default function Home() {
       setError(message);
       setCandles([]);
       setPattern(null);
+      setScanPersistence(null);
       const scannedAt = new Date().toISOString();
       const record: ScanHistoryRecord = {
         id: makeScanId(symbol, timeframe, scannedAt),
@@ -112,7 +127,7 @@ export default function Home() {
     <main className="app-shell">
       <header className="topbar">
         <a className="brand" href="#" aria-label="PatternView home"><span className="brand-mark">P</span><span>Pattern<span className="brand-muted">View</span></span></a>
-        <div className="topbar-right"><span className="live-dot" /> READ-ONLY MARKET DATA <span className="topbar-divider" /> PHASE 1</div>
+        <div className="topbar-right"><span className="live-dot" /> READ-ONLY MARKET DATA <span className="topbar-divider" /> PATTERN ANALYSIS</div>
       </header>
 
       <section className="page-heading">
@@ -145,7 +160,7 @@ export default function Home() {
             <div><span className="metric-label">CLOSED BARS</span><strong>{candles.length || "—"}</strong></div>
           </div>
           {loading && candles.length === 0 ? <div className="chart-placeholder"><span className="loader" />Loading closed candles…</div> : <CandleChart candles={candles} pattern={pattern} />}
-          <div className="chart-legend"><span><i className="legend-gold" /> Confirmed pivots</span><span><i className="legend-yellow" /> Neckline</span><span><i className="legend-red" /> Invalidation</span><span className="legend-note">Only closed candles are analysed</span></div>
+          <div className="chart-legend"><span><i className="legend-gold" /> Confirmed pivots</span><span><i className="legend-yellow" /> Neckline / breakout reference</span><span><i className="legend-red" /> Invalidation</span><span className="legend-note">Only closed candles are analysed</span></div>
         </div>
 
         <aside className="analysis-column">
@@ -153,21 +168,23 @@ export default function Home() {
             <div className="panel-heading"><div><p className="eyebrow">DETECTION RESULT</p><h2>Pattern interpretation</h2></div><span className="count-chip">{pattern ? "01" : "00"} FOUND</span></div>
             {loading && candles.length === 0 ? <div className="empty-state"><span className="loader" /><p>Scanning confirmed pivots…</p></div> : pattern ? (
               <div className="pattern-content">
-                <div className="pattern-title-row"><div className="pattern-icon">{BEARISH_PATTERNS.includes(pattern.kind) ? "⌃⌃" : "⌄⌄"}</div><div><h3>{PATTERN_NAMES[pattern.kind]}</h3><p>{BEARISH_PATTERNS.includes(pattern.kind) ? "Potential bearish reversal" : "Potential bullish reversal"}</p></div></div>
+                <div className="pattern-title-row"><div className="pattern-icon">{BEARISH_PATTERNS.includes(pattern.kind) ? "⌃⌃" : "⌄⌄"}</div><div><h3>{PATTERN_NAMES[pattern.kind]}</h3><p>Deterministic structural analysis</p></div></div>
                 <div className={`status-pill status-${pattern.status.toLowerCase().replaceAll(" ", "-")}`}><span />{pattern.status}</div>
+                {pattern.qualityScore != null && <div className="quality-score"><span>Heuristic quality score</span><strong>{pattern.qualityScore}/100</strong><small>Not a probability</small></div>}
                 <div className="level-list">
                   <div><span>Neckline / breakout</span><strong>{money(pattern.neckline)} <small>USDT</small></strong></div>
                   <div><span>Invalidation level</span><strong>{money(pattern.invalidation)} <small>USDT</small></strong></div>
                   <div><span>Conditional entry</span><strong>{money(pattern.entry)} <small>USDT</small></strong></div>
-                  <div><span>Stop-loss proposal</span><strong>{money(pattern.stopLoss)} <small>USDT</small></strong></div>
-                  <div><span>Measured-move target</span><strong>{money(pattern.takeProfit)} <small>USDT</small></strong></div>
+                  <div><span>Stop-loss reference</span><strong>{money(pattern.stopLoss)} <small>USDT</small></strong></div>
+                  <div><span>Measured-move reference</span><strong>{money(pattern.takeProfit)} <small>USDT</small></strong></div>
                 </div>
                 <div className="explanation"><h4>Why it was detected</h4><ul>{pattern.explanation.map((line, i) => <li key={i}>{line}</li>)}</ul></div>
                 {pattern.status !== "QUALIFIED" && <p className="conditional-note">No qualified entry yet. Levels are conditional analysis, not instructions to trade.</p>}
+                {scanPersistence !== null && <p className="conditional-note">{scanPersistence ? "Scan provenance saved to the backend database." : "Backend database is not configured; this scan is stored only in this browser."}</p>}
               </div>
             ) : <div className="empty-state"><div className="empty-icon">⌁</div><h3>No qualifying formation</h3><p>No in-scope classical formation met the deterministic criteria in the available closed candles.</p><span className="neutral-pill">NO TRADE</span></div>}
           </div>
-          <div className="panel rules-panel"><div className="panel-heading"><div><p className="eyebrow">DETECTION RULES</p><h2>Method at a glance</h2></div></div><ul className="rules-list"><li><span>01</span><div><strong>Confirmed pivots</strong><p>Three closed candles on each side of a pivot.</p></div></li><li><span>02</span><div><strong>Similarity tolerance</strong><p>Peak or trough levels within 1.2%.</p></div></li><li><span>03</span><div><strong>Breakout confirmation</strong><p>Requires a closed candle beyond the neckline.</p></div></li></ul></div>
+          <div className="panel rules-panel"><div className="panel-heading"><div><p className="eyebrow">DETECTION RULES</p><h2>Method at a glance</h2></div></div><ul className="rules-list"><li><span>01</span><div><strong>Confirmed pivots</strong><p>Three closed candles on each side of a pivot.</p></div></li><li><span>02</span><div><strong>Pattern-specific geometry</strong><p>Versioned, deterministic structure rules and near-miss constraints.</p></div></li><li><span>03</span><div><strong>Breakout confirmation</strong><p>Requires a closed candle beyond the pattern's reference level.</p></div></li></ul></div>
         </aside>
       </section>
 
@@ -190,7 +207,7 @@ export default function Home() {
         )}
       </section>
 
-      <footer className="disclaimer"><span className="disclaimer-icon">i</span><p><strong>Analysis only — no order execution.</strong> Pattern recognition is heuristic and can produce false positives. Entry, stop-loss, and target levels are conditional estimates, not financial advice. No profitability or predictive accuracy is claimed.</p><span className="footer-version">PATTERNVIEW · PHASE 1</span></footer>
+      <footer className="disclaimer"><span className="disclaimer-icon">i</span><p><strong>Analysis only — no order execution.</strong> Pattern recognition is heuristic and can produce false positives. Entry, stop-loss, and target levels are conditional estimates, not financial advice. No profitability or predictive accuracy is claimed.</p><span className="footer-version">PATTERNVIEW · READ-ONLY</span></footer>
     </main>
   );
 }

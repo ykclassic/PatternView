@@ -38,6 +38,7 @@ class PatternResult:
     quality_score: int
     first_pivot_time: int
     last_pivot_time: int
+    pivot_times: list[int]
     detection_time: int
     neckline: float
     breakout_level: float
@@ -113,12 +114,14 @@ def _make_result(
         )
         target = neckline - max(0.0, invalidation - neckline)
     entry = neckline if status in ("WAITING FOR BREAKOUT", "QUALIFIED") else None
+    ordered_pivots = sorted(pivots, key=lambda point: point.index)
     return PatternResult(
         kind=kind,
         status=status,
         quality_score=max(0, min(100, quality)),
-        first_pivot_time=pivots[0].time,
-        last_pivot_time=pivots[-1].time,
+        first_pivot_time=ordered_pivots[0].time,
+        last_pivot_time=ordered_pivots[-1].time,
+        pivot_times=[point.time for point in ordered_pivots],
         detection_time=last.time,
         neckline=neckline,
         breakout_level=neckline,
@@ -137,7 +140,6 @@ def _double_patterns(candles: list[Candle], pivots: list[Pivot]) -> list[Pattern
     results: list[PatternResult] = []
     highs = [point for point in pivots if point.kind == "high"]
     lows = [point for point in pivots if point.kind == "low"]
-    close = candles[-1].close
     for kind in ("DOUBLE_TOP", "DOUBLE_BOTTOM"):
         points = highs if kind == "DOUBLE_TOP" else lows
         for left_index, first in enumerate(points):
@@ -213,34 +215,38 @@ def _triangles(candles: list[Candle], pivots: list[Pivot]) -> list[PatternResult
     lows = [p for p in pivots if p.kind == "low"][-4:]
     if len(highs) < 3 or len(lows) < 3:
         return []
-    highs = highs[-3:]
-    lows = lows[-3:]
+    highs, lows = highs[-3:], lows[-3:]
     if max(highs[-1].index, lows[-1].index) - min(highs[0].index, lows[0].index) > 80:
         return []
     high_slope, low_slope = _slope(highs), _slope(lows)
     high_level = sum(p.price for p in highs) / len(highs)
     low_level = sum(p.price for p in lows) / len(lows)
-    gap_start = _line_at(highs, min(highs[0].index, lows[0].index)) - _line_at(
-        lows, min(highs[0].index, lows[0].index)
-    )
+    start_index = min(highs[0].index, lows[0].index)
+    gap_start = _line_at(highs, start_index) - _line_at(lows, start_index)
     gap_now = _line_at(highs, len(candles) - 1) - _line_at(lows, len(candles) - 1)
     if gap_start <= 0 or gap_now <= 0 or gap_now >= gap_start:
         return []
     if abs(high_slope) <= high_level * 0.0003 and low_slope > low_level * 0.0003:
         kind: PatternKind = "ASCENDING_TRIANGLE"
+        bullish = True
+        invalidation = low_level * 0.997
     elif high_slope < -high_level * 0.0003 and abs(low_slope) <= low_level * 0.0003:
         kind = "DESCENDING_TRIANGLE"
+        bullish = False
+        invalidation = high_level * 1.003
     elif high_slope < -high_level * 0.0003 and low_slope > low_level * 0.0003:
         kind = "SYMMETRICAL_TRIANGLE"
+        bullish = False
+        invalidation = high_level * 1.003
     else:
         return []
-    pivots_used = sorted(highs + lows, key=lambda p: p.index)
+    used = sorted(highs + lows, key=lambda point: point.index)
     return [_make_result(
-        kind, pivots_used, candles, (high_level + low_level) / 2,
-        high_level * 1.003, True, 64,
+        kind, used, candles, (high_level + low_level) / 2,
+        invalidation, bullish, 64,
         ["Three confirmed swing highs and lows form converging boundaries.",
          f"Projected upper/lower boundary slopes are {high_slope:.6g} and {low_slope:.6g}.",
-         "Triangle breakout direction is not predicted; qualification uses the midpoint reference only."],
+         "Triangle direction remains uncertain until a closed candle confirms a boundary break."],
     )]
 
 
@@ -262,16 +268,18 @@ def _flags_and_wedges(candles: list[Candle], pivots: list[Pivot]) -> list[Patter
             else:
                 kind = ""
             if kind:
+                bullish = kind == "FALLING_WEDGE"
+                invalidation = min(lows[-1].price for _ in [0]) * 0.997 if bullish else max(
+                    highs[-1].price for _ in [0]
+                ) * 1.003
                 results.append(_make_result(
                     kind, sorted(highs + lows, key=lambda p: p.index), candles,
-                    (highs[-1].price + lows[-1].price) / 2,
-                    max(highs[-1].price, lows[-1].price) * 1.003,
-                    kind == "FALLING_WEDGE", 58,
+                    (highs[-1].price + lows[-1].price) / 2, invalidation,
+                    bullish, 58,
                     ["Three confirmed swing highs and lows form a narrowing channel.",
                      "Wedge classification uses the direction of both boundary slopes."],
                 ))
 
-    # A flag requires a clear directional pole followed by a compact, sloped range.
     if len(candles) >= 40:
         close_now = candles[-1].close
         pole_start = candles[-25].close
@@ -288,7 +296,9 @@ def _flags_and_wedges(candles: list[Candle], pivots: list[Pivot]) -> list[Patter
                     bullish = move > 0
                     kind = "BULL_FLAG" if bullish else "BEAR_FLAG"
                     neck = (highs_recent[-1].price + lows_recent[-1].price) / 2
-                    invalidation = min(c.low for c in recent) if bullish else max(c.high for c in recent)
+                    invalidation = min(c.low for c in recent) * 0.997 if bullish else max(
+                        c.high for c in recent
+                    ) * 1.003
                     results.append(_make_result(
                         kind, sorted(highs_recent + lows_recent, key=lambda p: p.index), candles,
                         neck, invalidation, bullish, 55,
@@ -314,7 +324,6 @@ def detect_patterns(candles: list[Candle]) -> list[PatternResult]:
         + _triangles(candles, pivots)
         + _flags_and_wedges(candles, pivots)
     )
-    # Keep one latest representative per pattern kind and sort newest first.
     latest: dict[str, PatternResult] = {}
     for candidate in candidates:
         current = latest.get(candidate.kind)

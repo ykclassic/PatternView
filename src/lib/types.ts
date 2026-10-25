@@ -7,6 +7,13 @@ export type PatternKind =
   | "TRIPLE_BOTTOM"
   | "HEAD_AND_SHOULDERS"
   | "INVERSE_HEAD_AND_SHOULDERS"
+  | "ASCENDING_TRIANGLE"
+  | "DESCENDING_TRIANGLE"
+  | "SYMMETRICAL_TRIANGLE"
+  | "BULL_FLAG"
+  | "BEAR_FLAG"
+  | "RISING_WEDGE"
+  | "FALLING_WEDGE"
   | "DOJI"
   | "HAMMER"
   | "SHOOTING_STAR"
@@ -46,6 +53,9 @@ export interface DetectedPattern {
   stopLoss: number | null;
   takeProfit: number | null;
   explanation: string[];
+  qualityScore?: number;
+  ruleVersion?: string;
+  detectionTime?: number;
 }
 
 export interface ScanHistoryRecord {

@@ -117,3 +117,5 @@ h1{font-size:29px;line-height:1.2;letter-spacing:-1.1px;margin:0;font-weight:700
 .history-detail details>summary{cursor:pointer;color:#c0ccdc}
 .history-json{max-height:360px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;background:#060a11;border:1px solid var(--border);border-radius:6px;padding:12px;font-size:10px;color:#a6b6cc}
 @media(max-width:700px){.history-record>summary{grid-template-columns:1fr;gap:5px;padding:13px}.history-detail{padding:0 13px 13px}}
+
+.quality-score{display:flex;align-items:center;gap:10px;margin:14px 0;padding:11px 13px;border:1px solid var(--border);border-radius:10px;background:var(--panel2)}.quality-score span{font-size:12px;color:var(--muted)}.quality-score strong{font-family:"DM Mono",monospace;color:var(--yellow);font-size:14px}.quality-score small{margin-left:auto;color:var(--dim);font-size:10px;text-transform:uppercase;letter-spacing:.5px}
