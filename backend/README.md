@@ -31,4 +31,6 @@ Set `DATABASE_URL` to a PostgreSQL connection string and apply `migrations/001_i
 
 Only BTCUSDT, ETHUSDT and SOLUSDT spot pairs and 15m, 1h, 4h and 1d timeframes are accepted. Binance public spot OHLCV is attempted first, with Kraken public OHLC as fallback. Provider requests have a four-second timeout, candle payloads are validated, and forming candles are excluded. Responses expose only bounded error codes, not raw provider payloads. Successful results are cached for ten seconds; stale cache entries are not silently returned as current data.
 
+Configure browser origins with comma-separated `CORS_ORIGINS` values (default `http://localhost:3000`); wildcard origins and credentialed CORS are disabled. `RATE_LIMIT_PER_MINUTE` sets a per-process sliding-window request cap (default 120/minute). Health/readiness probes are exempt. The in-memory limiter is not a distributed quota and should be complemented by a shared gateway if the service scales beyond one instance.
+
 No credentials are needed for market data. No order execution or trading automation exists in this service.
