@@ -4,6 +4,7 @@ import asyncio
 
 import httpx
 import pytest
+import time
 
 from app.market_data import MarketDataUnavailable, _fetch_binance
 
@@ -39,7 +40,7 @@ def test_binance_451_stops_host_rotation_immediately():
 
 
 def test_binance_transient_host_failure_can_try_next_host():
-    now = 2_000_000_000
+    now = int(time.time())
     rows = []
     for index in range(45):
         timestamp = (now - (45 - index) * 3600) * 1000
