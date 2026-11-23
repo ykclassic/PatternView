@@ -57,3 +57,19 @@ test("sanitizes upstream failures instead of forwarding exception text", async (
   assert.equal(payload.error, "Pattern analysis backend could not be reached.");
   assert.equal(JSON.stringify(payload).includes("secret token"), false);
 });
+
+
+test("preserves market-data-unavailable classification from backend", async () => {
+  process.env.PATTERNVIEW_API_URL = "https://analysis.example";
+  globalThis.fetch = (async () => Response.json({
+    detail: {
+      code: "market_data_unavailable",
+      message: "Market data is temporarily unavailable from supported providers.",
+    },
+  }, { status: 502 })) as typeof fetch;
+  const response = await POST(request(JSON.stringify({ symbol: "BTCUSDT", timeframe: "1h" })));
+  assert.equal(response.status, 502);
+  const payload = await response.json();
+  assert.equal(payload.code, "market_data_unavailable");
+  assert.match(payload.error, /configured providers/);
+});
