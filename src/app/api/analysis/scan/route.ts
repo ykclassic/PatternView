@@ -61,7 +61,7 @@ export async function POST(request: NextRequest) {
       "cache-control": "no-store", "x-content-type-options": "nosniff", "referrer-policy": "no-referrer",
     } });
   } catch (cause) {
-    if (cause instanceof Error && cause.name === "TimeoutError") {
+    if (controller.signal.aborted || (cause instanceof Error && cause.name === "TimeoutError")) {
       return jsonError("Pattern analysis request timed out while waiting for the backend.", 504, "backend_timeout");
     }
     return jsonError("Pattern analysis backend could not be reached.", 502, "backend_unreachable");
