@@ -1,7 +1,7 @@
 """Exchange-agnostic public OHLCV fetching with bounded provider failover."""
 from __future__ import annotations
 
-import asyncio
+import logging
 import math
 import time
 from dataclasses import dataclass
@@ -10,6 +10,8 @@ from typing import Any
 import httpx
 
 from app.schemas import Candle, Symbol, Timeframe
+
+logger = logging.getLogger(__name__)
 
 BINANCE_HOSTS = (
     "https://api.binance.com",
@@ -30,6 +32,7 @@ INTERVAL_SECONDS: dict[str, int] = {
 }
 KRAKEN_INTERVALS: dict[str, int] = {"15m": 15, "1h": 60, "4h": 240, "1d": 1440}
 CACHE_TTL_SECONDS = 10.0
+MIN_CLOSED_CANDLES = 40
 
 
 class MarketDataUnavailable(Exception):
@@ -100,7 +103,6 @@ def normalize_kraken(payload: Any, timeframe: Timeframe, now: int | None = None)
     rows = result.get(pair_key) if pair_key else None
     if not isinstance(rows, list) or not rows:
         raise ValueError("missing_pair_data")
-    # Kraken includes a final, currently forming candle. Never scan it.
     current_time = int(time.time()) if now is None else now
     interval = INTERVAL_SECONDS[timeframe]
     candles: list[Candle] = []
@@ -126,42 +128,39 @@ def normalize_kraken(payload: Any, timeframe: Timeframe, now: int | None = None)
 async def _fetch_binance(
     client: httpx.AsyncClient, symbol: Symbol, timeframe: Timeframe, limit: int
 ) -> list[Candle]:
-    async def request(host: str) -> httpx.Response:
-        return await client.get(
-            f"{host}/api/v3/klines",
-            params={"symbol": symbol, "interval": timeframe, "limit": limit},
-        )
+    """Try equivalent Binance hosts sequentially; 451 is terminal for this provider."""
+    failures: list[str] = []
+    for host in BINANCE_HOSTS:
+        try:
+            response = await client.get(
+                f"{host}/api/v3/klines",
+                params={"symbol": symbol, "interval": timeframe, "limit": limit},
+            )
+        except httpx.HTTPError:
+            failures.append("request_failed")
+            continue
 
-    tasks = [asyncio.create_task(request(host)) for host in BINANCE_HOSTS]
-    reasons: list[str] = []
-    try:
-        for task in asyncio.as_completed(tasks):
-            try:
-                response = await task
-                if response.status_code != 200:
-                    reasons.append(f"http_{response.status_code}")
-                    continue
-                try:
-                    candles = normalize_binance(response.json(), timeframe)
-                except (ValueError, TypeError):
-                    reasons.append("invalid_payload")
-                    continue
-                if len(candles) < 40:
-                    reasons.append("insufficient_closed_candles")
-                    continue
-                return candles
-            except (httpx.HTTPError, ValueError, TypeError):
-                reasons.append("request_failed")
-        raise MarketDataUnavailable(reasons[0] if reasons else "provider_unavailable")
-    finally:
-        for task in tasks:
-            if not task.done():
-                task.cancel()
-        await asyncio.gather(*tasks, return_exceptions=True)
+        if response.status_code == 451:
+            raise MarketDataUnavailable("http_451")
+        if response.status_code != 200:
+            failures.append(f"http_{response.status_code}")
+            continue
+        try:
+            candles = normalize_binance(response.json(), timeframe)
+        except (ValueError, TypeError):
+            failures.append("invalid_payload")
+            continue
+        if len(candles) < MIN_CLOSED_CANDLES:
+            failures.append("insufficient_closed_candles")
+            continue
+        return candles
+
+    reason = failures[0] if failures else "provider_unavailable"
+    raise MarketDataUnavailable(reason)
 
 
 async def _fetch_kraken(
-    client: httpx.AsyncClient, symbol: Symbol, timeframe: Timeframe
+    client: httpx.AsyncClient, symbol: Symbol, timeframe: Timeframe, limit: int
 ) -> list[Candle]:
     response = await client.get(
         "https://api.kraken.com/0/public/OHLC",
@@ -173,15 +172,18 @@ async def _fetch_kraken(
         candles = normalize_kraken(response.json(), timeframe)
     except (ValueError, TypeError) as exc:
         raise MarketDataUnavailable("invalid_payload") from exc
-    if len(candles) < 40:
+    if len(candles) < MIN_CLOSED_CANDLES:
         raise MarketDataUnavailable("insufficient_closed_candles")
-    return candles
+    return candles[-limit:]
 
 
 async def fetch_market_snapshot(
     symbol: Symbol, timeframe: Timeframe, limit: int = 300
 ) -> MarketSnapshot:
     """Fetch normalized closed candles; use short-lived cache and provider failover."""
+    if not 40 <= limit <= 720:
+        raise ValueError("limit_out_of_range")
+
     cache_key = (symbol, timeframe, limit)
     now_monotonic = time.monotonic()
     cached = _cache.get(cache_key)
@@ -192,14 +194,31 @@ async def fetch_market_snapshot(
         try:
             candles = await _fetch_binance(client, symbol, timeframe, limit)
             provider = "binance"
-        except MarketDataUnavailable:
+        except MarketDataUnavailable as binance_error:
+            logger.warning(
+                "market_data_provider_failed",
+                extra={"provider": "binance", "reason_code": binance_error.reason_code},
+            )
             try:
-                candles = await _fetch_kraken(client, symbol, timeframe)
+                candles = await _fetch_kraken(client, symbol, timeframe, limit)
                 provider = "kraken"
-            except (MarketDataUnavailable, httpx.HTTPError):
-                raise MarketDataUnavailable("provider_unavailable") from None
+            except (MarketDataUnavailable, httpx.HTTPError) as kraken_error:
+                reason = (
+                    kraken_error.reason_code
+                    if isinstance(kraken_error, MarketDataUnavailable)
+                    else "request_failed"
+                )
+                logger.error(
+                    "market_data_all_providers_failed",
+                    extra={
+                        "binance_reason_code": binance_error.reason_code,
+                        "kraken_reason_code": reason,
+                        "symbol": symbol,
+                        "timeframe": timeframe,
+                    },
+                )
+                raise MarketDataUnavailable("all_providers_unavailable") from None
 
-    # Provider limits vary; retain the newest requested number of closed candles.
     snapshot = MarketSnapshot(
         symbol=symbol,
         timeframe=timeframe,
