@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useState } from "react";
 import CandleChart from "@/components/candle-chart";
-import { fetchMarketSnapshot } from "@/lib/market-data";
 import { appendScanHistory, makeScanId, readScanHistory } from "@/lib/scan-history";
 import { fetchAnalysisScan } from "@/lib/analysis-api";
 import type { Candle, DetectedPattern, PatternKind, ScanHistoryRecord, SymbolPair, Timeframe } from "@/lib/types";
@@ -61,10 +60,8 @@ export default function Home() {
     setLoading(true);
     setError(null);
     try {
-      const snapshot = await fetchMarketSnapshot(symbol, timeframe, signal);
-      const result = snapshot.candles;
-      if (result.length < 40) throw new Error("Not enough closed candles for a meaningful pattern scan.");
       const analysis = await fetchAnalysisScan(symbol, timeframe, signal);
+      const result = analysis.candles;
       const detected = analysis.pattern;
       const scannedAt = new Date().toISOString();
       const record: ScanHistoryRecord = {
@@ -72,7 +69,7 @@ export default function Home() {
         symbol,
         timeframe,
         scannedAt,
-        provider: analysis.provider || snapshot.provider,
+        provider: analysis.provider,
         candleCount: result.length,
         firstCandleTime: result[0].time,
         lastCandleTime: result[result.length - 1].time,
