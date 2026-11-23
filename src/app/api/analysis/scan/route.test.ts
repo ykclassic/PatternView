@@ -54,6 +54,6 @@ test("sanitizes upstream failures instead of forwarding exception text", async (
   const response = await POST(request(JSON.stringify({ symbol: "BTCUSDT", timeframe: "1h" })));
   assert.equal(response.status, 502);
   const payload = await response.json();
-  assert.equal(payload.error, "Pattern analysis service is temporarily unavailable.");
+  assert.equal(payload.error, "Pattern analysis backend could not be reached.");
   assert.equal(JSON.stringify(payload).includes("secret token"), false);
 });
