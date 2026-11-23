@@ -3,104 +3,57 @@ import { afterEach, test } from "node:test";
 import { NextRequest } from "next/server";
 import { GET } from "./route";
 
-const originalFetch = globalThis.fetch;
-afterEach(() => { globalThis.fetch = originalFetch; });
+const oldUrl = process.env.PATTERNVIEW_API_URL;
+const oldFetch = globalThis.fetch;
+afterEach(() => {
+  if (oldUrl === undefined) delete process.env.PATTERNVIEW_API_URL;
+  else process.env.PATTERNVIEW_API_URL = oldUrl;
+  globalThis.fetch = oldFetch;
+});
 
-const binanceRow = [1_800_000_000_000, "100", "110", "90", "105", "42"];
-const krakenPayload = {
-  error: [],
-  result: {
-    XXBTZUSDT: [
-      [1_800_000_000, "100", "110", "90", "105", "103", "42", 8],
-      [1_800_000_900, "105", "112", "101", "108", "106", "12", 5],
-    ],
-    last: 1_800_000_900,
-  },
-};
+const candles = Array.from({ length: 40 }, (_, index) => ({
+  time: 1_800_000_000 + index * 3600,
+  open: 100, high: 110, low: 90, close: 105, volume: 42,
+}));
 
-test("rejects unsupported symbols without contacting upstream", async () => {
+test("rejects unsupported symbols without contacting backend", async () => {
   let calls = 0;
-  globalThis.fetch = (async () => { calls += 1; return Response.json([]); }) as typeof fetch;
+  globalThis.fetch = (async () => { calls += 1; return Response.json({}); }) as typeof fetch;
   const response = await GET(new NextRequest("http://localhost/api/market/klines?symbol=DOGEUSDT&interval=1h"));
   assert.equal(response.status, 400);
   assert.equal(calls, 0);
 });
 
-test("returns Binance candles when a Binance host succeeds", async () => {
+test("proxies canonical backend candles and preserves provider provenance", async () => {
+  process.env.PATTERNVIEW_API_URL = "https://analysis.example";
+  let requested: URL | undefined;
   globalThis.fetch = (async (input) => {
-    if (String(input).startsWith("https://api.binance.com/")) return new Response(null, { status: 503 });
-    return Response.json([binanceRow]);
+    requested = new URL(String(input));
+    return Response.json({
+      symbol: "BTCUSDT", timeframe: "1h", provider: "kraken",
+      candles, fetched_at: 1_800_200_000, stale: false,
+    });
   }) as typeof fetch;
   const response = await GET(new NextRequest("http://localhost/api/market/klines?symbol=BTCUSDT&interval=1h"));
   assert.equal(response.status, 200);
-  assert.equal(response.headers.get("x-market-data-provider"), "binance");
-  assert.deepEqual(await response.json(), [binanceRow]);
-  assert.equal(response.headers.get("cache-control"), "no-store");
-});
-
-test("falls back to Kraken and converts its candle format", async () => {
-  globalThis.fetch = (async (input) => {
-    if (String(input).toString().includes("api.kraken.com")) return Response.json(krakenPayload);
-    return new Response(null, { status: 503 });
-  }) as typeof fetch;
-  const response = await GET(new NextRequest("http://localhost/api/market/klines?symbol=BTCUSDT&interval=15m"));
-  assert.equal(response.status, 200);
   assert.equal(response.headers.get("x-market-data-provider"), "kraken");
-  const candles = await response.json();
-  assert.equal(candles.length, 1, "the still-open Kraken candle must be discarded");
-  assert.deepEqual(candles[0], [1_800_000_000_000, "100", "110", "90", "105", "42"]);
+  assert.equal(requested?.pathname, "/api/v1/candles");
+  assert.equal(requested?.searchParams.get("timeframe"), "1h");
+  const rows = await response.json();
+  assert.equal(rows.length, 40);
+  assert.equal(rows[0][0], candles[0].time * 1000);
 });
 
-test("returns sanitized 502 only after all supported providers fail", async () => {
-  globalThis.fetch = (async () => new Response("private upstream detail", { status: 503 })) as typeof fetch;
+test("fails closed when the canonical backend is not configured", async () => {
+  delete process.env.PATTERNVIEW_API_URL;
   const response = await GET(new NextRequest("http://localhost/api/market/klines?symbol=ETHUSDT&interval=15m"));
-  assert.equal(response.status, 502);
-  assert.deepEqual(await response.json(), {
-    error: "Market data is temporarily unavailable from all supported providers.",
-  });
+  assert.equal(response.status, 503);
 });
 
-test("rejects malformed Binance data and tries Kraken", async () => {
-  globalThis.fetch = (async (input) => {
-    if (String(input).includes("api.kraken.com")) return Response.json(krakenPayload);
-    return Response.json({ code: -1 });
-  }) as typeof fetch;
+test("returns sanitized failure when backend rejects market data", async () => {
+  process.env.PATTERNVIEW_API_URL = "https://analysis.example";
+  globalThis.fetch = (async () => Response.json({ detail: "provider secret" }, { status: 502 })) as typeof fetch;
   const response = await GET(new NextRequest("http://localhost/api/market/klines?symbol=SOLUSDT&interval=4h"));
-  assert.equal(response.status, 200);
-  assert.equal(response.headers.get("x-market-data-provider"), "kraken");
-});
-
-test("does not return malformed Kraken candle data", async () => {
-  globalThis.fetch = (async (input) => {
-    if (String(input).includes("api.kraken.com")) {
-      return Response.json({ error: [], result: { SOLUSDT: [["bad"], ["bad"]], last: 1 } });
-    }
-    return new Response(null, { status: 503 });
-  }) as typeof fetch;
-  const response = await GET(new NextRequest("http://localhost/api/market/klines?symbol=SOLUSDT&interval=1d"));
   assert.equal(response.status, 502);
-});
-
-test("serves the exact provider interval for all 12 supported pair/timeframe combinations", async () => {
-  const symbols = ["BTCUSDT", "ETHUSDT", "SOLUSDT"];
-  const intervals = ["15m", "1h", "4h", "1d"];
-  for (const symbol of symbols) {
-    for (const interval of intervals) {
-      const selected: string[] = [];
-      globalThis.fetch = (async (input) => {
-        const url = new URL(String(input));
-        if (url.hostname === "api.binance.com") return new Response(null, { status: 503 });
-        if (url.hostname === "api1.binance.com") {
-          selected.push(url.toString());
-          return Response.json([binanceRow]);
-        }
-        return new Response(null, { status: 503 });
-      }) as typeof fetch;
-      const response = await GET(new NextRequest(`http://localhost/api/market/klines?symbol=${symbol}&interval=${interval}`));
-      assert.equal(response.status, 200, `${symbol} ${interval} should return data`);
-      assert.equal(new URL(selected[0]).searchParams.get("symbol"), symbol);
-      assert.equal(new URL(selected[0]).searchParams.get("interval"), interval);
-      assert.equal(response.headers.get("x-market-data-provider"), "binance");
-    }
-  }
+  assert.match((await response.json()).error, /provider chain/);
 });
