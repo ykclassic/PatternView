@@ -30,6 +30,7 @@ def test_scan_contract_reports_non_persisted_status_without_database(monkeypatch
     assert payload["scan_status"] == "NO TRADE"
     assert payload["patterns"] == []
     assert payload["persisted"] is False
+    assert len(payload["candles"]) == 1
     assert payload["rule_version"]
 
 

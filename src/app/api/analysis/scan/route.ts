@@ -4,8 +4,8 @@ export const dynamic = "force-dynamic";
 const SYMBOLS = new Set(["BTCUSDT", "ETHUSDT", "SOLUSDT"]);
 const TIMEFRAMES = new Set(["15m", "1h", "4h", "1d"]);
 const MAX_BODY_BYTES = 16 * 1024;
-function jsonError(message: string, status: number) {
-  return NextResponse.json({ error: message }, { status, headers: {
+function jsonError(message: string, status: number, code?: string) {
+  return NextResponse.json({ error: message, ...(code ? { code } : {}) }, { status, headers: {
     "cache-control": "no-store", "x-content-type-options": "nosniff", "referrer-policy": "no-referrer",
   } });
 }
@@ -43,13 +43,28 @@ export async function POST(request: NextRequest) {
     });
     const payload = await upstream.json().catch(() => null);
     if (!upstream.ok) {
-      const status = upstream.status === 400 || upstream.status === 422 ? upstream.status : upstream.status === 503 ? 503 : 502;
-      return jsonError(status === 503 ? "Pattern analysis persistence is unavailable." :
-        status === 400 || status === 422 ? "Invalid scan request." : "Pattern analysis service is temporarily unavailable.", status);
+      const detail = typeof payload === "object" && payload !== null && "detail" in payload
+        ? payload.detail : null;
+      const detailCode = typeof detail === "object" && detail !== null && "code" in detail &&
+        typeof detail.code === "string" ? detail.code : undefined;
+      if (detailCode === "market_data_unavailable") {
+        return jsonError("Market data is unavailable from the configured providers. The scan was not run.", 502, detailCode);
+      }
+      if (detailCode === "persistence_unavailable" || upstream.status === 503) {
+        return jsonError("The scan could not be saved because backend persistence is unavailable.", 503, "persistence_unavailable");
+      }
+      const status = upstream.status === 400 || upstream.status === 422 ? upstream.status : 502;
+      return jsonError(status === 400 || status === 422 ? "Invalid scan request." :
+        "Pattern analysis service is temporarily unavailable.", status, "analysis_service_unavailable");
     }
     return NextResponse.json(payload, { headers: {
       "cache-control": "no-store", "x-content-type-options": "nosniff", "referrer-policy": "no-referrer",
     } });
-  } catch { return jsonError("Pattern analysis service is temporarily unavailable.", 502); }
+  } catch (cause) {
+    if (controller.signal.aborted || (cause instanceof Error && cause.name === "TimeoutError")) {
+      return jsonError("Pattern analysis request timed out while waiting for the backend.", 504, "backend_timeout");
+    }
+    return jsonError("Pattern analysis backend could not be reached.", 502, "backend_unreachable");
+  }
   finally { clearTimeout(timeout); }
 }

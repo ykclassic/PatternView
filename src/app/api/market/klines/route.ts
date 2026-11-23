@@ -1,155 +1,84 @@
 import { NextRequest, NextResponse } from "next/server";
 
-const ALLOWED_SYMBOLS = new Set(["BTCUSDT", "ETHUSDT", "SOLUSDT"]);
-const ALLOWED_INTERVALS = new Set(["15m", "1h", "4h", "1d"]);
-const BINANCE_API_HOSTS = [
-  "https://api.binance.com",
-  "https://api1.binance.com",
-  "https://api2.binance.com",
-  "https://api3.binance.com",
-] as const;
-const KRAKEN_PAIRS: Record<string, string> = {
-  BTCUSDT: "XBTUSDT",
-  ETHUSDT: "ETHUSDT",
-  SOLUSDT: "SOLUSDT",
-};
-const KRAKEN_INTERVALS: Record<string, number> = { "15m": 15, "1h": 60, "4h": 240, "1d": 1440 };
-const REQUEST_TIMEOUT_MS = 4_000;
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
-type BinanceKline = [number, string, string, string, string, string, ...unknown[]];
+const SYMBOLS = new Set(["BTCUSDT", "ETHUSDT", "SOLUSDT"]);
+const INTERVALS = new Set(["15m", "1h", "4h", "1d"]);
+const REQUEST_TIMEOUT_MS = 8_000;
 
-function validCandleRows(payload: unknown): payload is unknown[][] {
-  if (!Array.isArray(payload) || payload.length === 0) return false;
-  let previousTime = 0;
-  for (const row of payload) {
-    if (!Array.isArray(row) || row.length < 6) return false;
-    const values = row.slice(0, 6).map(Number);
-    const [time, open, high, low, close, volume] = values;
-    if (!values.every(Number.isFinite) || time <= previousTime || open <= 0 ||
-      high < Math.max(open, close, low) || low <= 0 ||
-      low > Math.min(open, close) || volume < 0) return false;
-    previousTime = time;
-  }
-  return true;
-}
-
-function validKrakenRows(payload: unknown): payload is unknown[][] {
-  if (!Array.isArray(payload) || payload.length === 0) return false;
-  let previousTime = 0;
-  for (const row of payload) {
-    if (!Array.isArray(row) || row.length < 8) return false;
-    const time = Number(row[0]);
-    const open = Number(row[1]);
-    const high = Number(row[2]);
-    const low = Number(row[3]);
-    const close = Number(row[4]);
-    const volume = Number(row[6]);
-    if (![time, open, high, low, close, volume].every(Number.isFinite) ||
-      time <= previousTime || open <= 0 || high < Math.max(open, close, low) ||
-      low <= 0 || low > Math.min(open, close) || volume < 0) return false;
-    previousTime = time;
-  }
-  return true;
-}
-
-async function fetchJson(url: URL): Promise<unknown> {
-  const response = await fetch(url, {
-    cache: "no-store",
-    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-    headers: { Accept: "application/json" },
-  });
-  if (!response.ok) throw new Error(`http_${response.status}`);
-  return response.json();
-}
-
-async function fetchBinance(host: string, symbol: string, interval: string): Promise<unknown[][]> {
-  const url = new URL("/api/v3/klines", host);
-  url.searchParams.set("symbol", symbol);
-  url.searchParams.set("interval", interval);
-  url.searchParams.set("limit", "300");
-  const payload = await fetchJson(url);
-  if (!validCandleRows(payload)) throw new Error("invalid_payload");
-  return payload;
-}
-
-async function fetchKraken(symbol: string, interval: string): Promise<BinanceKline[]> {
-  const url = new URL("https://api.kraken.com/0/public/OHLC");
-  url.searchParams.set("pair", KRAKEN_PAIRS[symbol]);
-  url.searchParams.set("interval", String(KRAKEN_INTERVALS[interval]));
-  const payload = await fetchJson(url);
-  if (!payload || typeof payload !== "object" || !("result" in payload) || !("error" in payload)) {
-    throw new Error("invalid_envelope");
-  }
-
-  const envelope = payload as { error: unknown; result: unknown };
-  if (!Array.isArray(envelope.error) || envelope.error.length > 0) throw new Error("provider_error");
-  if (!envelope.result || typeof envelope.result !== "object") throw new Error("invalid_result");
-
-  const result = envelope.result as Record<string, unknown>;
-  const key = Object.keys(result).find((candidate) => candidate !== "last");
-  if (!key || !Array.isArray(result[key])) throw new Error("missing_pair_data");
-
-  // Kraken's final row is the still-open candle; discard it before validation.
-  const rows = (result[key] as unknown[][]).slice(0, -1);
-  if (!validKrakenRows(rows)) throw new Error("invalid_payload");
-  return rows.map((row): BinanceKline => [
-    Number(row[0]) * 1000,
-    String(row[1]),
-    String(row[2]),
-    String(row[3]),
-    String(row[4]),
-    String(row[6]),
-  ]);
-}
-
-function safeReasonCode(cause: unknown): string {
-  const message = cause instanceof Error ? cause.message : "";
-  if (/^http_\d{3}$/.test(message)) return message;
-  if (["invalid_payload", "invalid_envelope", "provider_error", "invalid_result", "missing_pair_data"].includes(message)) {
-    return message;
-  }
-  return "request_failed";
-}
-
-function recordFailure(provider: string, cause: unknown) {
-  // Log only a bounded provider identifier and allowlisted reason code.
-  console.warn("[market-data] provider attempt failed", {
-    provider,
-    reason_code: safeReasonCode(cause),
+function jsonError(message: string, status: number) {
+  return NextResponse.json({ error: message }, {
+    status,
+    headers: { "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" },
   });
 }
 
 export async function GET(request: NextRequest) {
   const symbol = request.nextUrl.searchParams.get("symbol") ?? "";
   const interval = request.nextUrl.searchParams.get("interval") ?? "";
-
-  if (!ALLOWED_SYMBOLS.has(symbol) || !ALLOWED_INTERVALS.has(interval)) {
-    return NextResponse.json({ error: "Unsupported symbol or timeframe." }, { status: 400 });
+  if (!SYMBOLS.has(symbol) || !INTERVALS.has(interval)) {
+    return jsonError("Unsupported symbol or timeframe.", 400);
   }
 
-  // Race Binance's public API hosts; each attempt has its own hard timeout.
-  const attempts = await Promise.allSettled(BINANCE_API_HOSTS.map((host) => fetchBinance(host, symbol, interval)));
-  const successful = attempts.find(
-    (attempt): attempt is PromiseFulfilledResult<unknown[][]> => attempt.status === "fulfilled",
-  );
-  if (successful) {
-    return NextResponse.json(successful.value, {
-      headers: { "Cache-Control": "no-store", "X-Market-Data-Provider": "binance" },
-    });
+  const configuredOrigin = process.env.PATTERNVIEW_API_URL?.trim();
+  if (!configuredOrigin) {
+    return jsonError("Market data API is not configured for this deployment.", 503);
   }
-  for (const attempt of attempts) if (attempt.status === "rejected") recordFailure("binance", attempt.reason);
+
+  let origin: URL;
+  try {
+    origin = new URL(configuredOrigin);
+    const localHttp = origin.protocol === "http:" &&
+      ["localhost", "127.0.0.1", "[::1]"].includes(origin.hostname);
+    if ((!localHttp && origin.protocol !== "https:") || origin.username || origin.password ||
+      origin.search || origin.hash || (origin.pathname !== "/" && origin.pathname !== "")) {
+      return jsonError("Market data API configuration is invalid.", 503);
+    }
+  } catch {
+    return jsonError("Market data API configuration is invalid.", 503);
+  }
 
   try {
-    const candles = await fetchKraken(symbol, interval);
-    return NextResponse.json(candles, {
-      headers: { "Cache-Control": "no-store", "X-Market-Data-Provider": "kraken" },
+    const upstreamUrl = new URL("/api/v1/candles", origin.origin);
+    upstreamUrl.searchParams.set("symbol", symbol);
+    upstreamUrl.searchParams.set("timeframe", interval);
+    upstreamUrl.searchParams.set("limit", "300");
+    const upstream = await fetch(upstreamUrl, {
+      method: "GET",
+      headers: { Accept: "application/json" },
+      cache: "no-store",
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     });
-  } catch (cause) {
-    recordFailure("kraken", cause);
-  }
+    const payload: unknown = await upstream.json().catch(() => null);
+    if (!upstream.ok) {
+      const status = upstream.status === 400 || upstream.status === 422 ? upstream.status : 502;
+      return jsonError(
+        status === 400 ? "Unsupported market-data request." :
+          "Market data is unavailable from the configured provider chain.",
+        status,
+      );
+    }
+    if (typeof payload !== "object" || payload === null || !("candles" in payload) ||
+      !Array.isArray(payload.candles) || !("provider" in payload) ||
+      typeof payload.provider !== "string") {
+      return jsonError("Market data API returned an invalid response.", 502);
+    }
 
-  return NextResponse.json(
-    { error: "Market data is temporarily unavailable from all supported providers." },
-    { status: 502, headers: { "Cache-Control": "no-store" } },
-  );
+    const rows = payload.candles.map((item) => {
+      if (typeof item !== "object" || item === null) throw new Error("invalid_candle");
+      const candle = item as Record<string, unknown>;
+      const values = [candle.time, candle.open, candle.high, candle.low, candle.close, candle.volume].map(Number);
+      if (!values.every(Number.isFinite) || values[0] <= 0) throw new Error("invalid_candle");
+      return [values[0] * 1000, String(values[1]), String(values[2]), String(values[3]), String(values[4]), String(values[5])];
+    });
+    return NextResponse.json(rows, {
+      headers: {
+        "Cache-Control": "no-store",
+        "X-Market-Data-Provider": payload.provider,
+      },
+    });
+  } catch {
+    return jsonError("Market data API request timed out or could not be reached.", 502);
+  }
 }
