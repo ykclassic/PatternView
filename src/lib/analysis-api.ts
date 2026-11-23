@@ -1,37 +1,19 @@
-import type { DetectedPattern, PatternKind, PatternStatus, SymbolPair, Timeframe } from "@/lib/types";
+import type { Candle, DetectedPattern, PatternKind, PatternStatus, SymbolPair, Timeframe } from "@/lib/types";
 
 interface ApiPattern {
-  kind: PatternKind;
-  status: string;
-  first_pivot_time: number;
-  last_pivot_time: number;
-  pivot_times?: number[];
-  detection_time?: number;
-  rule_version?: string;
-  neckline: number;
-  breakout_level: number;
-  invalidation: number;
-  entry: number | null;
-  stop_loss: number | null;
-  take_profit: number | null;
-  explanation: string[];
-  quality_score: number;
+  kind: PatternKind; status: string; first_pivot_time: number; last_pivot_time: number;
+  pivot_times?: number[]; detection_time?: number; rule_version?: string;
+  neckline: number; breakout_level: number; invalidation: number;
+  entry: number | null; stop_loss: number | null; take_profit: number | null;
+  explanation: string[]; quality_score: number;
 }
 interface ScanResponse {
-  scan_id: string;
-  provider: string;
-  rule_version: string;
-  scan_status: string;
-  persisted: boolean;
-  patterns: ApiPattern[];
+  scan_id: string; provider: string; rule_version: string; scan_status: string;
+  persisted: boolean; candles: Candle[]; patterns: ApiPattern[];
 }
 export interface AnalysisScan {
-  scanId: string;
-  provider: string;
-  ruleVersion: string;
-  scanStatus: string;
-  persisted: boolean;
-  pattern: DetectedPattern | null;
+  scanId: string; provider: string; ruleVersion: string; scanStatus: string;
+  persisted: boolean; candles: Candle[]; pattern: DetectedPattern | null;
 }
 const allowedStatuses = new Set<PatternStatus>([
   "FORMING", "CONFIRMED", "WAITING FOR BREAKOUT", "QUALIFIED", "INVALIDATED", "NO TRADE",
@@ -57,41 +39,56 @@ function parsePattern(value: ApiPattern, fallbackRuleVersion: string): DetectedP
   const status = value.status.replaceAll("_", " ") as PatternStatus;
   if (!allowedStatuses.has(status)) throw new Error("Analysis service returned an unknown pattern status.");
   const pivotTimes = Array.isArray(value.pivot_times)
-    ? value.pivot_times.filter((time) => Number.isFinite(time))
-    : [];
+    ? value.pivot_times.filter((time) => Number.isFinite(time)) : [];
   return {
-    kind: value.kind,
-    status,
-    firstPivotTime: value.first_pivot_time,
-    secondPivotTime: pivotTimes[1] ?? value.last_pivot_time,
-    thirdPivotTime: pivotTimes[2],
-    neckline: value.neckline,
-    breakoutLevel: value.breakout_level,
-    invalidation: value.invalidation,
-    entry: value.entry,
-    stopLoss: value.stop_loss,
-    takeProfit: value.take_profit,
-    explanation: value.explanation,
-    qualityScore: value.quality_score,
-    ruleVersion: value.rule_version ?? fallbackRuleVersion,
-    detectionTime: value.detection_time,
+    kind: value.kind, status, firstPivotTime: value.first_pivot_time,
+    secondPivotTime: pivotTimes[1] ?? value.last_pivot_time, thirdPivotTime: pivotTimes[2],
+    neckline: value.neckline, breakoutLevel: value.breakout_level, invalidation: value.invalidation,
+    entry: value.entry, stopLoss: value.stop_loss, takeProfit: value.take_profit,
+    explanation: value.explanation, qualityScore: value.quality_score,
+    ruleVersion: value.rule_version ?? fallbackRuleVersion, detectionTime: value.detection_time,
   };
+}
+
+function parseCandles(value: unknown): Candle[] {
+  if (!Array.isArray(value) || value.length < 40) {
+    throw new Error("Analysis service returned insufficient closed candles.");
+  }
+  const candles = value.map((item): Candle => {
+    if (typeof item !== "object" || item === null) throw new Error("Analysis service returned invalid candle data.");
+    const row = item as Record<string, unknown>;
+    const candle = {
+      time: Number(row.time), open: Number(row.open), high: Number(row.high),
+      low: Number(row.low), close: Number(row.close), volume: Number(row.volume),
+    };
+    if (!Object.values(candle).every(Number.isFinite) || candle.time <= 0 ||
+        candle.open <= 0 || candle.low <= 0 || candle.volume < 0 ||
+        candle.high < Math.max(candle.open, candle.close, candle.low) ||
+        candle.low > Math.min(candle.open, candle.close)) {
+      throw new Error("Analysis service returned invalid candle values.");
+    }
+    return candle;
+  });
+  for (let i = 1; i < candles.length; i += 1) {
+    if (candles[i].time <= candles[i - 1].time) {
+      throw new Error("Analysis service returned unordered candle timestamps.");
+    }
+  }
+  return candles;
 }
 
 export async function fetchAnalysisScan(
   symbol: SymbolPair, timeframe: Timeframe, signal?: AbortSignal,
 ): Promise<AnalysisScan> {
   const response = await fetch("/api/analysis/scan", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ symbol, timeframe, limit: 300 }),
-    signal,
-    cache: "no-store",
+    method: "POST", headers: { "content-type": "application/json" },
+    body: JSON.stringify({ symbol, timeframe, limit: 300 }), signal, cache: "no-store",
   });
   const payload: unknown = await response.json().catch(() => null);
   if (!response.ok) {
     const message = typeof payload === "object" && payload !== null && "error" in payload &&
-      typeof payload.error === "string" ? payload.error : `Analysis service unavailable (HTTP ${response.status}).`;
+      typeof payload.error === "string" ? payload.error :
+      "Analysis service unavailable (HTTP " + response.status + ").";
     throw new Error(message);
   }
   if (typeof payload !== "object" || payload === null || !("patterns" in payload) ||
@@ -104,14 +101,11 @@ export async function fetchAnalysisScan(
       typeof scan.scan_status !== "string") {
     throw new Error("Analysis service returned incomplete scan provenance.");
   }
+  const candles = parseCandles(scan.candles);
   const patterns = scan.patterns.map((pattern) => parsePattern(pattern, scan.rule_version));
   return {
-    scanId: scan.scan_id,
-    provider: scan.provider,
-    ruleVersion: scan.rule_version,
-    scanStatus: scan.scan_status,
-    persisted: scan.persisted,
-    pattern: patterns[0] ?? null,
+    scanId: scan.scan_id, provider: scan.provider, ruleVersion: scan.rule_version,
+    scanStatus: scan.scan_status, persisted: scan.persisted, candles, pattern: patterns[0] ?? null,
   };
 }
 
